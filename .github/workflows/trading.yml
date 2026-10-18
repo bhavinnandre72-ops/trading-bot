@@ -28,5 +28,5 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         run: |
-          python trading_bot.py
+          python nifty_bot.py
           
