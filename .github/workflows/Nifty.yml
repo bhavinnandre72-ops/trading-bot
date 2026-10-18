@@ -1,4 +1,4 @@
-name: Nifty Trading Bot
+name: Nifty Auto Trading Bot
 
 on:
   schedule:
