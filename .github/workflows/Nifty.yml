@@ -2,7 +2,6 @@ name: Nifty Auto Trading Bot
 
 on:
   schedule:
-    # सकाळी ९:१५ वाजता (भारतीय वेळनुसार) ऑटोमॅटिक रन होण्यासाठी Cron
     - cron: '45 3 * * 1-5'
   workflow_dispatch:
 
@@ -18,13 +17,12 @@ jobs:
         with:
           python-version: '3.10'
 
-       - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install requests yfinance pandas
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests yfinance pandas
 
-
-      - name: Run Trading Bot
+      - name: Run Nifty Bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         run: |
