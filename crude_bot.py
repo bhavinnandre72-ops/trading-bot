@@ -1,169 +1,75 @@
-import os
-import requests
-import datetime
+from datetime import datetime
 import time
-import yfinance as yf
-import pandas as pd
+from SmartApi import SmartConnect
+import pyotp
+import requests
 
-TOKEN = os.getenv('TELEGRAM_TOKEN')
-CHAT_ID = "1486399523"
+# ----------------- क्रेडेंशियल्स -----------------
+API_KEY = "iemEXsyV"
+CLIENT_ID = "B253694"
+PWD = "7172"
+TOTP_SECRET = "D4YNATHBA3VFIW5C7YUQPJNVIE"
 
-def send_telegram_message(message):
-    if not TOKEN:
-        print("Telegram Token सापडला नाही!")
-        return
-    
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message
-    }
+TELEGRAM_TOKEN = "8667131376:AAFRsq79krKkfHr8OFzD0cVh6vooie6jYcI"
+TELEGRAM_CHAT_ID = "1486399523"
+
+
+def send_telegram(message):
+  url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+  payload = {
+      "chat_id": TELEGRAM_CHAT_ID,
+      "text": message,
+      "parse_mode": "Markdown",
+  }
+  try:
+    requests.post(url, json=payload)
+  except Exception as e:
+    print(f"Telegram Error: {e}")
+
+
+# ----------------- SmartAPI कनेक्ट -----------------
+try:
+  smartApi = SmartConnect(api_key=API_KEY)
+  totp = pyotp.TOTP(TOTP_SECRET).now()
+  data = smartApi.generateSession(CLIENT_ID, PWD, totp)
+  print("Crude Oil Bot: Angel One API Connected!")
+  send_telegram("✅ *Crude Oil Live Bot Connected!*")
+except Exception as e:
+  print(f"Login Failed: {e}")
+  send_telegram("❌ *Crude Oil Bot API Connection Failed!*")
+
+# ----------------- लाईव्ह डेटा & पेपर ट्रेडिंग -----------------
+trade_done_today = False
+
+while True:
+  now = datetime.now()
+  current_time = now.strftime("%H:%M")
+
+  # क्रूड ऑईलसाठी सकाळी ९:१५ वाजता किंवा हव्या त्या वेळी लाईव्ह डेटा फेच करणे
+  if current_time == "09:15" and not trade_done_today:
     try:
-        response = requests.post(url, json=payload)
-        print("Telegram Response:", response.text)
+      # MCX Crude Oil Live Price (MCX Token for Crude Oil)
+      ltp_data = smartApi.ltpData("MCX", "CRUDEOIL", "260335")
+      crude_live = float(ltp_data["data"]["ltp"])
+
+      trade_msg = (
+          f"🛢 *क्रूड ऑईल लाईव्ह पेपर ट्रेड (MCX)*\n\n"
+          f"📈 *क्रूड ऑईल लाईव्ह भाव:* ₹{crude_live}\n"
+          f"🎯 *कॉन्ट्रैक्ट:* CRUDEOIL FUTURE\n"
+          f"📦 *क्वांटिटी:* 1 Lot (100 Barrels)\n"
+          f"⏱ *एन्ट्री वेळ:* `{now.strftime('%H:%M:%S')}`\n\n"
+          f"_हा मेसेज MCX क्रूड ऑईलच्या रिअल-टाईम लाईव्ह डेटावर आधारित आहे._"
+      )
+
+      send_telegram(trade_msg)
+      trade_done_today = True
+
     except Exception as e:
-        print("Error sending message:", e)
+      print(f"Error fetching Crude LTP: {e}")
 
-def calculate_rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+  # रात्री १२:०० वाजता स्टेटस रिसेट करणे
+  if current_time == "00:00":
+    trade_done_today = False
 
-def check_market_signal():
-    """प्रत्येक वेळेस लाईव्ह मार्केट स्कॅन करून पॅटर्न आणि इंडिकेटर तपासून सिग्नल देणारे फंक्शन"""
-    try:
-        crude = yf.Ticker("CL=F")
-        df = crude.history(period="3d", interval="15m")
-        
-        if df.empty or len(df) < 30:
-            return None, 6000.0, 0, 0, 50.0, 6000.0, "No Data"
-        
-        df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
-        df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
-        df['RSI'] = calculate_rsi(df['Close'], 14)
-        df['VWAP'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
-        
-        current_price = round(df['Close'].iloc[-1], 2)
-        ema9 = df['EMA_9'].iloc[-1]
-        ema21 = df['EMA_21'].iloc[-1]
-        rsi_val = df['RSI'].iloc[-1]
-        vwap_val = df['VWAP'].iloc[-1]
-        
-        o1, c1, h1, l1 = df['Open'].iloc[-1], df['Close'].iloc[-1], df['High'].iloc[-1], df['Low'].iloc[-1]
-        o2, c2, h2, l2 = df['Open'].iloc[-2], df['Close'].iloc[-2], df['High'].iloc[-2], df['Low'].iloc[-2]
-        o3, c3, h3, l3 = df['Open'].iloc[-3], df['Close'].iloc[-3], df['High'].iloc[-3], df['Low'].iloc[-3]
-        
-        body1 = abs(c1 - o1)
-        body2 = abs(c2 - o2)
-        
-        # 12 Candlestick Patterns check
-        is_hammer = (min(o1, c1) - l1) > (2 * body1) and (h1 - max(o1, c1)) < body1
-        is_bullish_engulfing = (c2 < o2) and (c1 > o1) and (c1 >= o2) and (o1 <= c2)[span_0](start_span)[span_0](end_span)
-        is_morning_star = (c3 < o3) and (body2 < abs(c3 - o3) * 0.4) and (c1 > o1) and (c1 >= (o3 + o3)/2)[span_1](start_span)[span_1](end_span)
-        
-        is_inv_hammer = (h1 - max(o1, c1)) > (2 * body1) and (min(o1, c1) - l1) < body1[span_2](start_span)[span_2](end_span)
-        is_bearish_engulfing = (c2 > o2) and (c1 < o1) and (c1 <= o2) and (o1 >= c2)[span_3](start_span)[span_3](end_span)
-        is_evening_star = (c3 > o3) and (body2 < abs(c3 - o3) * 0.4) and (c1 < o1) and (c1 <= (o3 + o3)/2)[span_4](start_span)[span_4](end_span)
-
-        pattern_detected = "EMA & VWAP Trend"
-        signal = None
-
-        if is_bullish_engulfing or is_morning_star or is_hammer:
-            pattern_detected = "Bullish Candlestick Pattern 🟢 (Support)"
-            signal = "BUY CALL (CE)"
-        elif is_bearish_engulfing or is_evening_star or is_inv_hammer:
-            pattern_detected = "Bearish Candlestick Pattern 🔴 (Resistance)"
-            signal = "BUY PUT (PE)"
-        else:
-            # पॅटर्न नसला तरी इंडिकेटर ट्रेंड चेक करणे
-            if ema9 > ema21 and current_price > vwap_val:
-                signal = "BUY CALL (CE)"
-            elif ema9 < ema21 and current_price < vwap_val:
-                signal = "BUY PUT (PE)"
-
-        return signal, current_price, ema9, ema21, rsi_val, vwap_val, pattern_detected
-        
-    except Exception as e:
-        print("Error in market signal check:", e)
-        return None, 6000.0, 0, 0, 50.0, 6000.0, "Error"
-
-def execute_smart_session():
-    print("🚀 Smart Multi-Time Entry Crude Bot सुरू होत आहे...")
-    
-    executed_trades = 0
-    max_trades = 3
-    
-    # दिवसभरात ३ वेगवेगळ्या वेळेला ट्रेड्स शोधण्याचे लॉजिक
-    while executed_trades < max_trades:
-        current_time_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %I:%M:%S %p")
-        print(f"\n🔍 मार्केट स्कॅन करत आहे... (वेळ: {current_time_str}) - ट्रेड #{executed_trades + 1}")
-        
-        signal, live_spot, ema9, ema21, rsi, vwap, pattern = check_market_signal()
-        
-        if signal:
-            executed_trades += 1
-            atm_strike = round(live_spot / 50) * 50
-            
-            if "CALL" in signal:
-                strike_name = f"CRUDEOIL {atm_strike} CE"
-                entry_price = round(live_spot * 0.02, 2)
-                target = round(entry_price + 25.0, 2)  # स्वयंचलित टार्गेट (+२५ पॉईंट्स)
-                sl = round(entry_price - 15.0, 2)      # स्वयंचलित स्टॉपलॉस (-१५ पॉईंट्स)
-                trade_type = "BUY CALL (CE) 🟢"
-            else:
-                strike_name = f"CRUDEOIL {atm_strike - 50} PE"
-                entry_price = round(live_spot * 0.02, 2)
-                target = round(entry_price + 25.0, 2)
-                sl = round(entry_price - 15.0, 2)
-                trade_type = "BUY PUT (PE) 🔴"
-
-            # 1. एंट्री मेसेज
-            entry_message = (
-                f"🎯 [SMART CRUDE ENTRY #{executed_trades} OF 3]\n"
-                f"━━━━━━━━━━━━━━━━━━━\n"
-                f"⏰ एंट्री वेळ: {current_time_str}\n"
-                f"📈 लाईव्ह स्पॉट भाव: ₹{live_spot}\n"
-                f"🕯️ कन्फर्मेशन पॅटर्न: {pattern}\n"
-                f"📊 RSI: {round(rsi, 2)} | VWAP: ₹{round(vwap, 2)}\n"
-                f"🚀 सिस्टीम सिग्नल: {trade_type}\n"
-                f"⚡ स्ट्राइक प्राईस: {strike_name}\n"
-                f"💰 एंट्री प्राईस: ₹{entry_price}\n"
-                f"🎯 टार्गेट (Auto TP): ₹{target}\n"
-                f"🛑 स्टॉपलॉस (Auto SL): ₹{sl}\n"
-                f"🔄 स्टेटस: ट्रेड यशस्वीरीत्या इनिशिएट झाला."
-            )
-            send_telegram_message(entry_message)
-            
-            # ट्रेड चालू असतानाचा अवधी (सिम्युलेशन/टार्गेट ट्रॅकिंग)
-            time.sleep(15)
-            
-            exit_time_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %I:%M:%S %p")
-            
-            # 2. एक्झिट मेसेज (अल्गोद्वारे टार्गेट/SL हिट झाल्याचे अपडेट)
-            exit_message = (
-                f"🏁 [SMART CRUDE EXIT #{executed_trades} OF 3]\n"
-                f"━━━━━━━━━━━━━━━━━━━\n"
-                f"⏰ बाहेर पडल्याची वेळ: {exit_time_str}\n"
-                f"⚡ स्ट्राइक प्राईस: {strike_name}\n"
-                f"🎯 निकाल: Target Achieved Successfully! 🚀\n"
-                f"💰 एक्झिट प्राईस: ₹{target}\n"
-                f"📊 पोझिशन: बंद झाली."
-            )
-            send_telegram_message(exit_message)
-            
-            # पुढील संधी शोधण्यापूर्वी थोडा वेळ गॅप देणे
-            if executed_trades < max_trades:
-                print("⏳ पुढील पॅटर्न आणि संधीची वाट पाहत आहे (Cooling period)...")
-                time.sleep(20)
-        else:
-            print("⏳ सध्या योग्य कॅण्डल पॅटर्न किंवा इंडिकेटर कन्फर्मेशन नाही, पुन्हा स्कॅन करत आहे...")
-            time.sleep(15) # योग्य पॅटर्न मिळेपर्यंत दर १५ सेकंदांनी पुन्हा मार्केट चेक करेल
-
-    print("✅ आजचे तिन्ही स्मार्ट ट्रेड्स वेगवेगळ्या वेळेला पूर्ण झाले!")
-
-if __name__ == "__main__":
-    execute_smart_session()
+  time.sleep(30)
     
