@@ -33,11 +33,11 @@ try:
   smartApi = SmartConnect(api_key=API_KEY)
   totp = pyotp.TOTP(TOTP_SECRET).now()
   data = smartApi.generateSession(CLIENT_ID, PWD, totp)
-  print("Crude Oil Bot Connected!")
-  send_telegram("✅ *क्रूड ऑईल टेक्निकल बॉट लाईव्ह सुरू झाला आहे!*")
+  print("Crude Options Bot Connected!")
+  send_telegram("✅ *क्रूड ऑईल ऑप्शन्स बॉट लाईव्ह सुरू झाला आहे!*")
 except Exception as e:
   print(f"Login Failed: {e}")
-  send_telegram("❌ *क्रूड ऑईल बॉट कनेक्शन अयशस्वी!*")
+  send_telegram("❌ *क्रूड ऑईल ऑप्शन्स बॉट कनेक्शन अयशस्वी!*")
 
 
 # ----------------- RSI मोजण्याचे फंक्शन -----------------
@@ -50,7 +50,7 @@ def calculate_rsi(prices, window=14):
   return rsi.iloc[-1]
 
 
-# ----------------- मुख्य लॉजिक (क्रूड ऑईल मार्केट वेळेनुसार) -----------------
+# ----------------- मुख्य लॉजिक (क्रूड ऑईल ऑप्शन्स) -----------------
 trade_done_today = False
 
 while True:
@@ -60,7 +60,7 @@ while True:
   # क्रूड ऑईल मार्केट चालू वेळ: सकाळी ०९:०० ते रात्री ११:३० दरम्यान
   if "09:00" <= current_time <= "23:30" and not trade_done_today:
     try:
-      # ऐतिहासिक डेटा फेच करणे (कॅन्डलस्टिक, RSI, सपोर्ट/रेजिस्टेंससाठी)
+      # ऐतिहासिक डेटा फेच करणे (RSI आणि स/र साठी)
       to_date = datetime.now().strftime("%Y-%m-%d %H:%M")
       from_date = (datetime.now() - timedelta(days=2)).strftime(
           "%Y-%m-%d %H:%M"
@@ -86,32 +86,37 @@ while True:
         current_price = df["Close"].iloc[-1]
         rsi_val = round(calculate_rsi(df["Close"]), 2)
 
+        # ATM स्ट्राइक प्राईस काढणे (५० च्या फरकाने, जसे ऑप्शन चेनमध्ये आहे)
+        atm_strike = round(current_price / 50) * 50
+
         # सपोर्ट आणि रेजिस्टेंस लेव्हल्स
         support = round(df["Low"].tail(10).min(), 2)
         resistance = round(df["High"].tail(10).max(), 2)
 
-        # तुम्ही दिलेल्या अटींनुसार कॅन्डलस्टिक पॅटर्न आणि सिग्नल
+        # कॅन्डलस्टिक पॅटर्न आणि ऑप्शन सिलेक्ट करणे (अप्टन असेल तर CE, डाऊनट्रेंड तर PE)
         prev_close = df["Close"].iloc[-2]
         if current_price > prev_close:
-          pattern = "Bullish Engulfing / Hammer (कॅन्डलस्टिक पॅटर्न पॉझिटिव्ह)"
-          signal = "BUY (LONG) - अपट्रेंड सिग्नल"
+          pattern = "Bullish Engulfing / Hammer"
+          option_type = f"{atm_strike} CE (कॉल ऑप्शन)"
+          signal = "BUY CALL (LONG)"
         else:
-          pattern = "Bearish Pattern (कॅन्डलस्टिक पॅटर्न निगेटिव्ह)"
-          signal = "SELL (SHORT) - डाऊनट्रेंड सिग्नल"
+          pattern = "Bearish Pattern"
+          option_type = f"{atm_strike} PE (पुट ऑप्शन)"
+          signal = "BUY PUT (SHORT)"
 
-        # टेलिग्रामवर सविस्तर अलर्ट पाठवणे
+        # टेलिग्रामवर सविस्तर ऑप्शन ट्रेड अलर्ट पाठवणे
         trade_msg = (
-            f"🛢 *क्रूड ऑईल लाईव्ह टेक्निकल ट्रेड अलर्ट*\n\n"
-            f"📈 *लाईव्ह भाव:* ₹{current_price}\n"
+            f"🛢 *क्रूड ऑईल ऑप्शन्स ट्रेड अलर्ट (MCX)*\n\n"
+            f"📈 *क्रूड लाईव्ह भाव:* ₹{current_price}\n"
+            f"🎯 *निवडलेली ATM स्ट्राइक:* CRUDEOIL {option_type}\n"
             f"📊 *RSI (14):* `{rsi_val}`\n"
             f"🕯 *पॅटर्न:* {pattern}\n"
             f"🛡 *सपोर्ट:* ₹{support}\n"
             f"🚀 *रेजिस्टेंस:* ₹{resistance}\n"
             f"🎯 *सिस्टम सिग्नल:* *{signal}*\n"
-            f"📦 *क्वांटिटी:* 1 Lot (100 Barrels)\n"
             f"⏱ *वेळ:* `{now.strftime('%H:%M:%S')}`\n\n"
-            f"_हा ट्रेड क्रूड ऑईल मार्केटच्या वेळेनुसार आणि तुमच्या सेटअपवर आधारित"
-            f" आहे._"
+            f"_हा ट्रेड क्रूड ऑईल ऑप्शन्सच्या स्ट्राइक प्राईस आणि टेक्निकल"
+            f" सेटअपवर आधारित आहे._"
         )
 
         send_telegram(trade_msg)
@@ -120,7 +125,7 @@ while True:
     except Exception as e:
       print(f"Error: {e}")
 
-  # रात्री १२:० बजे नवीन दिवसासाठी स्टेटस रिसेट करणे
+  # रात्री १२:०० वाजता स्टेटस रिसेट करणे
   if current_time == "00:00":
     trade_done_today = False
 
