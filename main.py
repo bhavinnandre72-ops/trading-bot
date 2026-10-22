@@ -4,7 +4,7 @@ import threading
 import time
 from flask import Flask
 import pandas as pd
-from smartapi.smartConnect import SmartConnect
+from SmartApi.smartConnect import SmartConnect
 import pyotp
 import requests
 
