@@ -37,12 +37,12 @@ def send_telegram(message):
   payload = {
       "chat_id": TELEGRAM_CHAT_ID,
       "text": message,
-      "parse_mode": "Markdown",
   }
   try:
     requests.post(url, json=payload)
   except Exception as e:
     print(f"Telegram Error: {e}")
+
 
 
 # ----------------- १. निफ्टी बॉट फंक्शन -----------------
