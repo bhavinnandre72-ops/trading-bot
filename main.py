@@ -33,9 +33,9 @@ def send_telegram(message):
 # ----------------- १. निफ्टी बॉट फंक्शन -----------------
 def run_nifty():
   try:
-    smartApi = SmartConnect(api_key=API_KEY)
-    totp = pyotp.TOTP(TOTP_SECRET).now()
-    smartApi.generateSession(CLIENT_ID, PWD, totp)
+        data = smartApi.generateSession(CLIENT_ID, PWD, totp)
+    if data and 'data' in data and 'jwtToken' in data['data']:
+      smartApi.setAccessToken(data['data']['jwtToken'])
     send_telegram("✅ *Nifty Options Bot Connected!*")
   except Exception as e:
     print(f"Nifty Login Failed: {e}")
