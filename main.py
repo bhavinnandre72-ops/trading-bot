@@ -10,7 +10,7 @@ import requests
 # ----------------- क्रेडेंशियल्स -----------------
 API_KEY = "ienEXsyV"
 CLIENT_ID = "8253694"
-PWD = "Ji72"
+PWD = "7172"
 TOTP_SECRET = "D4YN4THBA3VFIW5C7YLUQFINVIE"
 
 TELEGRAM_TOKEN = "8667131376:AAFRsq79krKkfHr8OFzD0cVh6vooie6jYcI"
