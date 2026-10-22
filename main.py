@@ -4,11 +4,11 @@ import os
 import time
 from flask import Flask
 import pandas as pd
-from SmartApi.smartConnect import SmartConnect
+from smartapi.smartConnect import SmartConnect
 import pyotp
 import requests
 
-# ----------------- फ्लॅस्क वेब सर्व्हर (Render साठी) -----------------
+# ----------------- फ्लॅस्क वेब सर्व्हेर (Render साठी) -----------------
 app = Flask(__name__)
 
 
@@ -39,31 +39,29 @@ def send_telegram(message):
       "text": message,
   }
   try:
-    requests.post(url, json=payload)
+    response = requests.post(url, json=payload)
+    print("Telegram Status Code:", response.status_code)
   except Exception as e:
     print(f"Telegram Error: {e}")
 
 
-
 # ----------------- १. निफ्टी बॉट फंक्शन -----------------
 def run_nifty():
-  try:
-    smartApi = SmartConnect(api_key=API_KEY)
-    totp = pyotp.TOTP(TOTP_SECRET).now()
-    data = smartApi.generateSession(CLIENT_ID, PWD, totp)
-    if data and "data" in data and "jwtToken" in data["data"]:
-      smartApi.setAccessToken(data["data"]["jwtToken"])
-    send_telegram("✅ *Nifty Options Bot Connected!*")
-  except Exception as e:
-    print(f"Nifty Login Failed: {e}")
-
+  send_telegram("🚀 [SYSTEM CONNECTED] Nifty 50 Options Bot Is Live!")
   trade_done_today = False
+
   while True:
     now = datetime.now()
     current_time = now.strftime("%H:%M")
 
     if "09:15" <= current_time <= "15:30" and not trade_done_today:
       try:
+        smartApi = SmartConnect(api_key=API_KEY)
+        totp = pyotp.TOTP(TOTP_SECRET).now()
+        data = smartApi.generateSession(CLIENT_ID, PWD, totp)
+        if data and "data" in data and "jwtToken" in data["data"]:
+          smartApi.setAccessToken(data["data"]["jwtToken"])
+
         to_date = datetime.now().strftime("%Y-%m-%d %H:%M")
         from_date = (datetime.now() - timedelta(days=2)).strftime(
             "%Y-%m-%d %H:%M"
@@ -94,10 +92,10 @@ def run_nifty():
             signal = f"BUY NIFTY {atm_strike} PE (PUT)"
 
           msg = (
-              f"📊 *निफ्टी ऑप्शन्स ट्रेड अलर्ट*\n\n"
-              f"📈 *निफ्टी लाईव्ह भाव:* {current_price}\n"
-              f"🎯 *सिस्टम सिग्नल:* *{signal}*\n"
-              f"⏱ *वेळ:* `{now.strftime('%H:%M:%S')}`"
+              f"📊 निफ्टी ऑप्शन्स ट्रेड अलर्ट\n\n"
+              f"📈 निफ्टी लाईव्ह भाव: {current_price}\n"
+              f"🎯 सिस्टम सिग्नल: {signal}\n"
+              f"⏱ वेळ: {now.strftime('%H:%M:%S')}"
           )
           send_telegram(msg)
           trade_done_today = True
@@ -119,17 +117,8 @@ def run_natgas():
   os.system("python natgas_bot.py")
 
 
-# ----------------- मुख्य मल्टीप्रोसेसिंग रनर -----------------
+# ----------------- मुख्य मल्टिप्रोसेसिंग -----------------
 if __name__ == "__main__":
-  # रेंडरवर बॉट चालू होताच लगेच टेलिग्रामवर टेस्ट मेसेज पाठवणे
-  send_telegram(
-      "🚀 *Bhavin Trading Bot - Live System Status Check!*\n\n"
-      "✅ *Nifty 50 Bot:* Active\n"
-      "✅ *Crude Oil Bot:* Active\n"
-      "✅ *Natural Gas Bot:* Active\n\n"
-      "तुमचा पूर्ण सेटअप यशस्वीपणे चालू झाला आहे!"
-  )
-
   p_web = multiprocessing.Process(target=run_web)
   p1 = multiprocessing.Process(target=run_nifty)
   p2 = multiprocessing.Process(target=run_crude)
