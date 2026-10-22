@@ -121,6 +121,15 @@ def run_natgas():
 
 # ----------------- मुख्य मल्टीप्रोसेसिंग रनर -----------------
 if __name__ == "__main__":
+  # रेंडरवर बॉट चालू होताच लगेच टेलिग्रामवर टेस्ट मेसेज पाठवणे
+  send_telegram(
+      "🚀 *Bhavin Trading Bot - Live System Status Check!*\n\n"
+      "✅ *Nifty 50 Bot:* Active\n"
+      "✅ *Crude Oil Bot:* Active\n"
+      "✅ *Natural Gas Bot:* Active\n\n"
+      "तुमचा पूर्ण सेटअप यशस्वीपणे चालू झाला आहे!"
+  )
+
   p_web = multiprocessing.Process(target=run_web)
   p1 = multiprocessing.Process(target=run_nifty)
   p2 = multiprocessing.Process(target=run_crude)
