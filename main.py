@@ -2,15 +2,30 @@ from datetime import datetime, timedelta
 import multiprocessing
 import os
 import time
+from flask import Flask
 import pandas as pd
 from SmartApi.smartConnect import SmartConnect
 import pyotp
 import requests
 
+# ----------------- फ्लॅस्क वेब सर्व्हर (Render साठी) -----------------
+app = Flask(__name__)
+
+
+@app.route("/")
+def home():
+  return "Trading Bot is Active!"
+
+
+def run_web():
+  port = int(os.environ.get("PORT", 10000))
+  app.run(host="0.0.0.0", port=port)
+
+
 # ----------------- क्रेडेंशियल्स -----------------
 API_KEY = "ienEXsyV"
 CLIENT_ID = "8253694"
-PWD = "7172"
+PWD = "Ji72"
 TOTP_SECRET = "D4YN4THBA3VFIW5C7YLUQFINVIE"
 
 TELEGRAM_TOKEN = "8667131376:AAFRsq79krKkfHr8OFzD0cVh6vooie6jYcI"
@@ -47,7 +62,6 @@ def run_nifty():
     now = datetime.now()
     current_time = now.strftime("%H:%M")
 
-    # निफ्टी मार्केट वेळ: सकाळी ९:१५ ते दुपारी ३:३०
     if "09:15" <= current_time <= "15:30" and not trade_done_today:
       try:
         to_date = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -57,7 +71,7 @@ def run_nifty():
 
         historic_param = {
             "exchange": "NSE",
-            "symboltoken": "99926000",  # Nifty 50 Token
+            "symboltoken": "99926000",
             "interval": "ONE_HOUR",
             "fromdate": from_date,
             "todate": to_date,
@@ -71,8 +85,6 @@ def run_nifty():
           )
           df["Close"] = df["Close"].astype(float)
           current_price = df["Close"].iloc[-1]
-
-          # निफ्टी ATM स्ट्राइक (५० च्या फरकाने)
           atm_strike = round(current_price / 50) * 50
           prev_close = df["Close"].iloc[-2]
 
@@ -95,4 +107,31 @@ def run_nifty():
     if current_time == "00:00":
       trade_done_today = False
     time.sleep(60)
-    
+
+
+# ----------------- २. क्रूड ऑईल बॉट फंक्शन -----------------
+def run_crude():
+  os.system("python crude_bot.py")
+
+
+# ----------------- ३. नॅचरल गॅस बॉट फंक्शन -----------------
+def run_natgas():
+  os.system("python natgas_bot.py")
+
+
+# ----------------- मुख्य मल्टीप्रोसेसिंग रनर -----------------
+if __name__ == "__main__":
+  p_web = multiprocessing.Process(target=run_web)
+  p1 = multiprocessing.Process(target=run_nifty)
+  p2 = multiprocessing.Process(target=run_crude)
+  p3 = multiprocessing.Process(target=run_natgas)
+
+  p_web.start()
+  p1.start()
+  p2.start()
+  p3.start()
+
+  p_web.join()
+  p1.join()
+  p2.join()
+  p3.join()
