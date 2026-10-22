@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import time
 import pandas as pd
-from smartapi import SmartConnect
+from smartapi.smartConnect import SmartConnect
 import pyotp
 import requests
 
