@@ -33,9 +33,11 @@ def send_telegram(message):
 # ----------------- १. निफ्टी बॉट फंक्शन -----------------
 def run_nifty():
   try:
-        data = smartApi.generateSession(CLIENT_ID, PWD, totp)
-    if data and 'data' in data and 'jwtToken' in data['data']:
-      smartApi.setAccessToken(data['data']['jwtToken'])
+    smartApi = SmartConnect(api_key=API_KEY)
+    totp = pyotp.TOTP(TOTP_SECRET).now()
+    data = smartApi.generateSession(CLIENT_ID, PWD, totp)
+    if data and "data" in data and "jwtToken" in data["data"]:
+      smartApi.setAccessToken(data["data"]["jwtToken"])
     send_telegram("✅ *Nifty Options Bot Connected!*")
   except Exception as e:
     print(f"Nifty Login Failed: {e}")
@@ -93,28 +95,4 @@ def run_nifty():
     if current_time == "00:00":
       trade_done_today = False
     time.sleep(60)
-
-
-# ----------------- २. क्रूड ऑईल बॉट फंक्शन -----------------
-def run_crude():
-  os.system("python crude_bot.py")
-
-
-# ----------------- ३. नॅचरल गॅस बॉट फंक्शन -----------------
-def run_natgas():
-  os.system("python natgas_bot.py")
-
-
-# ----------------- मुख्य मल्टीप्रोसेसिंग रनर -----------------
-if __name__ == "__main__":
-  p1 = multiprocessing.Process(target=run_nifty)
-  p2 = multiprocessing.Process(target=run_crude)
-  p3 = multiprocessing.Process(target=run_natgas)
-
-  p1.start()
-  p2.start()
-  p3.start()
-
-  p1.join()
-  p2.join()
-  p3.join()
+    
