@@ -1,14 +1,14 @@
 from datetime import datetime, timedelta
-import multiprocessing
 import os
+import threading
 import time
 from flask import Flask
 import pandas as pd
-from SmartApi.smartConnect import SmartConnect
+from smartapi.smartConnect import SmartConnect
 import pyotp
 import requests
 
-# ----------------- १. फ्लॅस्क वेब सर्व्हेर -----------------
+# ----------------- फ्लॅस्क वेब सर्व्हेर -----------------
 app = Flask(__name__)
 
 
@@ -17,12 +17,7 @@ def home():
   return "Trading Bot Status: ONLINE"
 
 
-def run_web():
-  port = int(os.environ.get("PORT", 10000))
-  app.run(host="0.0.0.0", port=port)
-
-
-# ----------------- २. क्रेडेंशियल्स -----------------
+# ----------------- क्रेडेंशियल्स -----------------
 API_KEY = "ienEXsyV"
 CLIENT_ID = "8253694"
 PWD = "Ji72"
@@ -45,9 +40,9 @@ def send_telegram(message):
     print(f"Telegram Delivery Error: {e}")
 
 
-# ----------------- ३. निफ्टी ५० ऑप्शन्स टास्क -----------------
+# ----------------- निफ्टी ५० ऑप्शन्स टास्क -----------------
 def run_nifty():
-  time.sleep(2)  # वेब सर्व्हेर सुरू होण्यासाठी २ सेकंद थांबा
+  time.sleep(3)  # सर्व्हेर सुरू होण्यासाठी ३ सेकंद थांबा
   send_telegram("🚀 [SYSTEM ONLINE] Bhavin Nifty & Commodity Bot Active!")
 
   trade_done_today = False
@@ -110,14 +105,14 @@ def run_nifty():
     time.sleep(60)
 
 
-# ----------------- ४. मेन एक्झिक्युशन -----------------
+# ----------------- मुख्य एक्झिक्युशन -----------------
 if __name__ == "__main__":
-  # वेब सर्व्हेर आणि निफ्टी प्रॉसेस सुरू करा
-  p_web = multiprocessing.Process(target=run_web)
-  p_nifty = multiprocessing.Process(target=run_nifty)
+  # बॉटला बॅकग्राउंड थ्रेडमध्ये सुरू करा जेणेकरून फ्लॅस्क वेब सर्व्हेरला अडथळा येणार नाही
+  bot_thread = threading.Thread(target=run_nifty)
+  bot_thread.daemon = True
+  bot_thread.start()
 
-  p_web.start()
-  p_nifty.start()
-
-  p_web.join()
-  p_nifty.join()
+  # फ्लॅस्क वेब सर्व्हेर सुरू करा
+  port = int(os.environ.get("PORT", 10000))
+  app.run(host="0.0.0.0", port=port)
+  
