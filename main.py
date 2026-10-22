@@ -8,13 +8,13 @@ from smartapi.smartConnect import SmartConnect
 import pyotp
 import requests
 
-# ----------------- फ्लॅस्क वेब सर्व्हेर (Render साठी) -----------------
+# ----------------- १. फ्लॅस्क वेब सर्व्हेर -----------------
 app = Flask(__name__)
 
 
 @app.route("/")
 def home():
-  return "Trading Bot is Active!"
+  return "Trading Bot Status: ONLINE"
 
 
 def run_web():
@@ -22,7 +22,7 @@ def run_web():
   app.run(host="0.0.0.0", port=port)
 
 
-# ----------------- क्रेडेंशियल्स -----------------
+# ----------------- २. क्रेडेंशियल्स -----------------
 API_KEY = "ienEXsyV"
 CLIENT_ID = "8253694"
 PWD = "Ji72"
@@ -39,97 +39,85 @@ def send_telegram(message):
       "text": message,
   }
   try:
-    response = requests.post(url, json=payload)
-    print("Telegram Status Code:", response.status_code)
+    res = requests.post(url, json=payload, timeout=10)
+    print("Telegram Response:", res.status_code)
   except Exception as e:
-    print(f"Telegram Error: {e}")
+    print(f"Telegram Delivery Error: {e}")
 
 
-# ----------------- १. निफ्टी बॉट फंक्शन -----------------
+# ----------------- ३. निफ्टी ५० ऑप्शन्स टास्क -----------------
 def run_nifty():
-  send_telegram("🚀 [SYSTEM CONNECTED] Nifty 50 Options Bot Is Live!")
+  time.sleep(2)  # वेब सर्व्हेर सुरू होण्यासाठी २ सेकंद थांबा
+  send_telegram("🚀 [SYSTEM ONLINE] Bhavin Nifty & Commodity Bot Active!")
+
   trade_done_today = False
-
   while True:
-    now = datetime.now()
-    current_time = now.strftime("%H:%M")
+    try:
+      now = datetime.now()
+      current_time = now.strftime("%H:%M")
 
-    if "09:15" <= current_time <= "15:30" and not trade_done_today:
-      try:
+      if "09:15" <= current_time <= "15:30" and not trade_done_today:
         smartApi = SmartConnect(api_key=API_KEY)
         totp = pyotp.TOTP(TOTP_SECRET).now()
         data = smartApi.generateSession(CLIENT_ID, PWD, totp)
+
         if data and "data" in data and "jwtToken" in data["data"]:
           smartApi.setAccessToken(data["data"]["jwtToken"])
 
-        to_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-        from_date = (datetime.now() - timedelta(days=2)).strftime(
-            "%Y-%m-%d %H:%M"
-        )
+          to_date = now.strftime("%Y-%m-%d %H:%M")
+          from_date = (now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M")
 
-        historic_param = {
-            "exchange": "NSE",
-            "symboltoken": "99926000",
-            "interval": "ONE_HOUR",
-            "fromdate": from_date,
-            "todate": to_date,
-        }
+          historic_param = {
+              "exchange": "NSE",
+              "symboltoken": "99926000",
+              "interval": "ONE_HOUR",
+              "fromdate": from_date,
+              "todate": to_date,
+          }
 
-        history = smartApi.getCandleData(historic_param)
-        if history and "data" in history:
-          df = pd.DataFrame(
-              history["data"],
-              columns=["Date", "Open", "High", "Low", "Close", "Volume"],
-          )
-          df["Close"] = df["Close"].astype(float)
-          current_price = df["Close"].iloc[-1]
-          atm_strike = round(current_price / 50) * 50
-          prev_close = df["Close"].iloc[-2]
+          history = smartApi.getCandleData(historic_param)
+          if history and "data" in history and len(history["data"]) > 1:
+            df = pd.DataFrame(
+                history["data"],
+                columns=["Date", "Open", "High", "Low", "Close", "Volume"],
+            )
+            df["Close"] = df["Close"].astype(float)
+            current_price = df["Close"].iloc[-1]
+            prev_close = df["Close"].iloc[-2]
 
-          if current_price > prev_close:
-            signal = f"BUY NIFTY {atm_strike} CE (CALL)"
-          else:
-            signal = f"BUY NIFTY {atm_strike} PE (PUT)"
+            atm_strike = round(current_price / 50) * 50
+            signal = (
+                f"BUY NIFTY {atm_strike} CE"
+                if current_price > prev_close
+                else f"BUY NIFTY {atm_strike} PE"
+            )
 
-          msg = (
-              f"📊 निफ्टी ऑप्शन्स ट्रेड अलर्ट\n\n"
-              f"📈 निफ्टी लाईव्ह भाव: {current_price}\n"
-              f"🎯 सिस्टम सिग्नल: {signal}\n"
-              f"⏱ वेळ: {now.strftime('%H:%M:%S')}"
-          )
-          send_telegram(msg)
-          trade_done_today = True
-      except Exception as e:
-        print(f"Nifty Error: {e}")
+            msg = (
+                f"📊 [NIFTY 50 ALERT]\n\n"
+                f"📈 स्पोर्ट भाव: ₹{current_price}\n"
+                f"🎯 सिग्नल: {signal}\n"
+                f"⏱ वेळ: {now.strftime('%I:%M:%S %p')}"
+            )
+            send_telegram(msg)
+            trade_done_today = True
 
-    if current_time == "00:00":
-      trade_done_today = False
+      if current_time == "00:00":
+        trade_done_today = False
+
+    except Exception as e:
+      print(f"Nifty Loop Error: {e}")
+
     time.sleep(60)
 
 
-# ----------------- २. क्रूड ऑईल बॉट फंक्शन -----------------
-def run_crude():
-  os.system("python crude_bot.py")
-
-
-# ----------------- ३. नॅचरल गॅस बॉट फंक्शन -----------------
-def run_natgas():
-  os.system("python natgas_bot.py")
-
-
-# ----------------- मुख्य मल्टिप्रोसेसिंग -----------------
+# ----------------- ४. मेन एक्झिक्युशन -----------------
 if __name__ == "__main__":
+  # वेब सर्व्हेर आणि निफ्टी प्रॉसेस सुरू करा
   p_web = multiprocessing.Process(target=run_web)
-  p1 = multiprocessing.Process(target=run_nifty)
-  p2 = multiprocessing.Process(target=run_crude)
-  p3 = multiprocessing.Process(target=run_natgas)
+  p_nifty = multiprocessing.Process(target=run_nifty)
 
   p_web.start()
-  p1.start()
-  p2.start()
-  p3.start()
+  p_nifty.start()
 
   p_web.join()
-  p1.join()
-  p2.join()
-  p3.join()
+  p_nifty.join()
