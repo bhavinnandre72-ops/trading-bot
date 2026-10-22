@@ -3,7 +3,7 @@ import multiprocessing
 import os
 import time
 import pandas as pd
-from smartapi import SmartConnect
+from SmartApi.smartConnect import SmartConnect
 import pyotp
 import requests
 
