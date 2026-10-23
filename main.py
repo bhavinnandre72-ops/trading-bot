@@ -67,7 +67,7 @@ def run_nifty():
           historic_param = {
               "exchange": "NSE",
               "symboltoken": "99926000",
-              "interval": "FIVE_MINUTE",  # ५ मिनिटांची कॅण्डल
+              "interval": "FIVE_MINUTE",
               "fromdate": from_date,
               "todate": to_date,
           }
@@ -84,7 +84,6 @@ def run_nifty():
             current_price = df["Close"].iloc[-1]
             prev_close = df["Close"].iloc[-2]
 
-            # जर नवीन ५ मिनिटांची कॅण्डल आली असेल तरच अलर्ट पाठवा
             if current_candle_time != last_candle_time:
               atm_strike = round(current_price / 50) * 50
               signal = (
@@ -105,7 +104,7 @@ def run_nifty():
     except Exception as e:
       print(f"Nifty Error: {e}")
 
-    time.sleep(60)   दर मिनिटाला चेक करेल
+    time.sleep(60)  # दर मिनिटाला चेक करेल
 
 
 # ----------------- २. सेन्सेक्स (5-Min) -----------------
@@ -301,4 +300,4 @@ if __name__ == "__main__":
 
   port = int(os.environ.get("PORT", 10000))
   app.run(host="0.0.0.0", port=port)
-          
+  
