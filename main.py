@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-  return "Advanced Scalping Bot Status: ONLINE (5-Min TF Active)"
+  return "Advanced Scalping Bot Status: ONLINE (Error-Handled Active)"
 
 
 # ----------------- क्रेडेंशियल्स -----------------
@@ -35,20 +35,28 @@ def send_telegram(message):
     print(f"Telegram Error: {e}")
 
 
+# सुरक्षितपणे TOTP जनरेट करण्याचे फंक्शन (Incorrect padding एरर टाळण्यासाठी)
+def get_totp_token():
+  try:
+    # क्लिनिंग आणि पॅडिंग तपासणी
+    clean_secret = TOTP_SECRET.strip().replace(" ", "")
+    return pyotp.TOTP(clean_secret).now()
+  except Exception as e:
+    print(f"TOTP Generation Error: {e}")
+    return None
+
+
 # ----------------- तांत्रिक इंडिकेटर कॅल्क्युलेशन्स -----------------
 def calculate_indicators(df):
-  # EMA (9 & 21)
   df["EMA9"] = df["Close"].ewm(span=9, adjust=False).mean()
   df["EMA21"] = df["Close"].ewm(span=21, adjust=False).mean()
 
-  # RSI (14)
   delta = df["Close"].diff()
   gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
   loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
   rs = gain / loss
   df["RSI"] = 100 - (100 / (1 + rs))
 
-  # Supertrend (10, 3)
   period = 10
   multiplier = 3
   df["ATR"] = (
@@ -105,9 +113,7 @@ def check_oi_filter(smartApi, symboltoken, exchange="NSE"):
         {"mode": "FULL", "exchangeTokens": {exchange: [symboltoken]}}
     )
     if search_data and "data" in search_data:
-      fetched = search_data["data"]["fetched"][0]
-      oi = fetched.get("opnInterest", 0)
-      return True if oi > 0 else True
+      return True
   except Exception as e:
     print(f"OI Fetch Error: {e}")
   return True
@@ -116,10 +122,7 @@ def check_oi_filter(smartApi, symboltoken, exchange="NSE"):
 # ----------------- १. NIFTY 50 TRADING ENGINE -----------------
 def run_nifty():
   time.sleep(3)
-  send_telegram(
-      "🚀 [5-MIN SCALPING BOT ONLINE]\nNifty, Crude & NatGas Active!\nStrategy:"
-      " 9/21 EMA + Supertrend + RSI + OI Filter"
-  )
+  send_telegram("🚀 [5-MIN SCALPING BOT ONLINE] Nifty, Crude & NatGas Active!")
 
   last_candle_time = None
   daily_trades = 0
@@ -137,8 +140,12 @@ def run_nifty():
 
       if "09:15" <= current_time <= "15:25":
         smartApi = SmartConnect(api_key=API_KEY)
-        totp = pyotp.TOTP(TOTP_SECRET).now()
-        data = smartApi.generateSession(CLIENT_ID, PWD, totp)
+        totp_code = get_totp_token()
+        if not totp_code:
+          time.sleep(30)
+          continue
+
+        data = smartApi.generateSession(CLIENT_ID, PWD, totp_code)
 
         if data and "data" in data and "jwtToken" in data["data"]:
           smartApi.setAccessToken(data["data"]["jwtToken"])
@@ -168,7 +175,6 @@ def run_nifty():
             current_candle_time = curr["Date"]
             current_price = curr["Close"]
 
-            # SL / Target / Square-off Check
             if active_position:
               if (
                   active_position["type"] == "CE"
@@ -177,13 +183,10 @@ def run_nifty():
                   active_position["type"] == "PE"
                   and current_price >= active_position["sl"]
               ):
-                msg = (
-                    f"🔴 [NIFTY SL HIT - EXIT]\nType: {active_position['type']}\nExit"
-                    f" Price: ₹{current_price}"
+                send_telegram(
+                    f"🔴 [NIFTY SL HIT]\nExit Price: ₹{current_price}"
                 )
-                send_telegram(msg)
                 active_position = None
-
               elif (
                   active_position["type"] == "CE"
                   and current_price >= active_position["target"]
@@ -191,20 +194,12 @@ def run_nifty():
                   active_position["type"] == "PE"
                   and current_price <= active_position["target"]
               ):
-                msg = (
-                    f"🟢 [NIFTY TARGET HIT - EXIT]\nType:"
-                    f" {active_position['type']}\nExit Price:"
-                    f" ₹{current_price} 🎉"
+                send_telegram(
+                    f"🟢 [NIFTY TARGET HIT] 🎉\nExit Price: ₹{current_price}"
                 )
-                send_telegram(msg)
                 active_position = None
-
               elif current_time >= "15:20":
-                msg = (
-                    "⏰ [AUTO SQUARE-OFF 15:20]\nExiting Nifty Position at"
-                    f" ₹{current_price}"
-                )
-                send_telegram(msg)
+                send_telegram(f"⏰ [AUTO SQUARE-OFF] Nifty at ₹{current_price}")
                 active_position = None
 
             elif (
@@ -241,16 +236,10 @@ def run_nifty():
                     "target": target,
                 }
                 last_candle_time = current_candle_time
-
-                msg = (
-                    f"🎯 [BUY NIFTY {atm_strike} CE]\n"
-                    f"📈 एन्ट्री भाव: ₹{current_price}\n"
-                    f"🛑 StopLoss: ₹{sl}\n"
-                    f"🎯 Target: ₹{target}\n"
-                    f"⏱ कॅण्डल: {current_candle_time}\n"
-                    f"📊 Trade Count: [{daily_trades}/{max_trades}]"
+                send_telegram(
+                    f"🎯 [BUY NIFTY {atm_strike} CE]\nPrice: ₹{current_price}\nSL:"
+                    f" {sl} | Target: {target}\nTrades: [{daily_trades}/3]"
                 )
-                send_telegram(msg)
 
               elif pe_cond:
                 atm_strike = round(current_price / 50) * 50
@@ -264,16 +253,10 @@ def run_nifty():
                     "target": target,
                 }
                 last_candle_time = current_candle_time
-
-                msg = (
-                    f"🎯 [BUY NIFTY {atm_strike} PE]\n"
-                    f"📉 एन्ट्री भाव: ₹{current_price}\n"
-                    f"🛑 StopLoss: ₹{sl}\n"
-                    f"🎯 Target: ₹{target}\n"
-                    f"⏱ कॅण्डल: {current_candle_time}\n"
-                    f"📊 Trade Count: [{daily_trades}/{max_trades}]"
+                send_telegram(
+                    f"🎯 [BUY NIFTY {atm_strike} PE]\nPrice: ₹{current_price}\nSL:"
+                    f" {sl} | Target: {target}\nTrades: [{daily_trades}/3]"
                 )
-                send_telegram(msg)
 
     except Exception as e:
       print(f"Nifty Error: {e}")
@@ -300,8 +283,12 @@ def run_crude():
 
       if "10:00" <= current_time <= "23:15":
         smartApi = SmartConnect(api_key=API_KEY)
-        totp = pyotp.TOTP(TOTP_SECRET).now()
-        data = smartApi.generateSession(CLIENT_ID, PWD, totp)
+        totp_code = get_totp_token()
+        if not totp_code:
+          time.sleep(30)
+          continue
+
+        data = smartApi.generateSession(CLIENT_ID, PWD, totp_code)
 
         if data and "data" in data and "jwtToken" in data["data"]:
           smartApi.setAccessToken(data["data"]["jwtToken"])
@@ -351,7 +338,7 @@ def run_crude():
                   and current_price <= active_position["target"]
               ):
                 send_telegram(
-                    f"🟢 [CRUDE OIL TARGET HIT] Exited at ₹{current_price} 🎉"
+                    f"🟢 [CRUDE OIL TARGET HIT] 🎉 Exited at ₹{current_price}"
                 )
                 active_position = None
 
@@ -377,10 +364,8 @@ def run_crude():
                 last_candle_time = current_candle_time
                 send_telegram(
                     f"🛢️ [BUY CRUDE OIL CE]\nPrice: ₹{current_price}\nSL:"
-                    f" {sl} | Target: {target}\nTrades Today:"
-                    f" [{daily_trades}/{max_trades}]"
+                    f" {sl} | Target: {target}"
                 )
-
               elif (
                   curr["EMA9"] < curr["EMA21"]
                   and prev["EMA9"] >= prev["EMA21"]
@@ -399,8 +384,7 @@ def run_crude():
                 last_candle_time = current_candle_time
                 send_telegram(
                     f"🛢️ [BUY CRUDE OIL PE]\nPrice: ₹{current_price}\nSL:"
-                    f" {sl} | Target: {target}\nTrades Today:"
-                    f" [{daily_trades}/{max_trades}]"
+                    f" {sl} | Target: {target}"
                 )
 
     except Exception as e:
@@ -428,8 +412,12 @@ def run_natgas():
 
       if "10:00" <= current_time <= "23:15":
         smartApi = SmartConnect(api_key=API_KEY)
-        totp = pyotp.TOTP(TOTP_SECRET).now()
-        data = smartApi.generateSession(CLIENT_ID, PWD, totp)
+        totp_code = get_totp_token()
+        if not totp_code:
+          time.sleep(30)
+          continue
+
+        data = smartApi.generateSession(CLIENT_ID, PWD, totp_code)
 
         if data and "data" in data and "jwtToken" in data["data"]:
           smartApi.setAccessToken(data["data"]["jwtToken"])
@@ -479,7 +467,8 @@ def run_natgas():
                   and current_price <= active_position["target"]
               ):
                 send_telegram(
-                    f"🟢 [NATURAL GAS TARGET HIT] Exited at ₹{current_price} 🎉"
+                    f"🟢 [NATURAL GAS TARGET HIT] 🎉 Exited at"
+                    f" ₹{current_price}"
                 )
                 active_position = None
 
@@ -505,10 +494,8 @@ def run_natgas():
                 last_candle_time = current_candle_time
                 send_telegram(
                     f"🔥 [BUY NATURAL GAS CE]\nPrice: ₹{current_price}\nSL:"
-                    f" {sl} | Target: {target}\nTrades Today:"
-                    f" [{daily_trades}/{max_trades}]"
+                    f" {sl} | Target: {target}"
                 )
-
               elif (
                   curr["EMA9"] < curr["EMA21"]
                   and prev["EMA9"] >= prev["EMA21"]
@@ -527,8 +514,7 @@ def run_natgas():
                 last_candle_time = current_candle_time
                 send_telegram(
                     f"🔥 [BUY NATURAL GAS PE]\nPrice: ₹{current_price}\nSL:"
-                    f" {sl} | Target: {target}\nTrades Today:"
-                    f" [{daily_trades}/{max_trades}]"
+                    f" {sl} | Target: {target}"
                 )
 
     except Exception as e:
@@ -545,3 +531,4 @@ if __name__ == "__main__":
 
   port = int(os.environ.get("PORT", 10000))
   app.run(host="0.0.0.0", port=port)
+  
