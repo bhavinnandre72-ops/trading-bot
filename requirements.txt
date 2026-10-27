@@ -1,7 +1,7 @@
-smartapi-python
-pandas
-requests
-pyotp
-logzero
-websocket-client
 flask
+pandas
+numpy
+smartapi-python
+pyotp
+requests
+gunicorn
