@@ -2,8 +2,8 @@ name: Tiranga Bot Daily Run
 
 on:
   schedule:
-          - cron: '30 9 * * 1-5'
-  workflow_dispatch:
+    - cron: '30 9 * * 1-5'
+  workflow_dispatch:  # हे नवीन बटण ऍड करण्यासाठी
 
 jobs:
   run-tiranga-bot:
