@@ -5,7 +5,7 @@ from stocks_200 import stocks_list
 
 # टेलिग्राम बॉटची माहिती
 TOKEN = "8731401312:AAEQwWyzIDfGXUQeT3f0ZrKkkabi98xOvrQ"
-CHAT_ID = "8731401312"  # तुमचा चॅट आयडी
+CHAT_ID = "1486399523"  # तुमचा खरा चॅट आयडी इथे टाकला आहे
 
 def send_telegram_alert(message):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
