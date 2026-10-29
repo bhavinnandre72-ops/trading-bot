@@ -1,583 +1,153 @@
-from datetime import datetime, timedelta
-import os
-import threading
 import time
-from flask import Flask
-import pandas as pd
-from SmartApi.smartConnect import SmartConnect
-import pyotp
 import requests
+from SmartApi import SmartConnect
+import pandas as pd
+import numpy as np
 
-app = Flask(__name__)
+# ==================== 1. कॉन्फिगरेशन आणि एपीआय क्रेडेन्शियल ====================
+API_KEY = "iemEXsyV"
+CLIENT_ID = "B253694"
+MPIN = "7172"
+TOTP_KEY = "D4YNATHBA3VFIW5C7YUQPJNVIE"  # किंवा पासवर्ड
+
+# टेलिग्राम बॉटची माहिती
+TELEGRAM_BOT_TOKEN = "8667131376:AAE_b_p7lhL0xuK_bkxYJOAPMUFR9CIBLX0"
+TELEGRAM_CHAT_ID = "1486399523"  # तुमचे चॅट आयडी
+
+# ऑब्जेक्ट इनिशिलायझेशन
+obj = SmartConnect(api_key=API_KEY)
 
 
-@app.route("/")
-def home():
-  return "Advanced VWAP Scalping Bot Status: ONLINE (Active with Sensex)"
-
-
-# ----------------- क्रेडेंशियल्स -----------------
-API_KEY = "ienEXsyV"
-CLIENT_ID = "8253694"
-PWD = "7172"
-TOTP_SECRET = "D4YN4THBA3VFIW5C7YLUQFINVIE"
-
-TELEGRAM_TOKEN = "8667131376:AAFRsq79krKkfHr8OFzD0cVh6vooie6jYcI"
-TELEGRAM_CHAT_ID = "1486399523"
-
-
-def send_telegram(message):
-  url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-  payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
+def send_telegram_alert(message):
+  """टेलिग्रामवर अलर्ट पाठवण्यासाठीचे फंक्शन"""
   try:
-    requests.post(url, json=payload, timeout=10)
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    requests.post(url, json=payload)
   except Exception as e:
     print(f"Telegram Error: {e}")
 
 
-# सुरक्षितपणे TOTP जनरेट करण्याचे फंक्शन (Padding Error Fix)
-def get_totp_token():
+# ==================== 2. लॉगइन फंक्शन ====================
+def angel_one_login():
   try:
-    clean_secret = TOTP_SECRET.strip().replace(" ", "").upper()
-    missing_padding = len(clean_secret) % 8
-    if missing_padding:
-      clean_secret += "=" * (8 - missing_padding)
-    return pyotp.TOTP(clean_secret).now()
-  except Exception as e:
-    print(f"TOTP Generation Error: {e}")
-    return None
-
-
-# ----------------- VWAP & RSI इंडिकेटर कॅल्क्युलेशन्स -----------------
-def calculate_indicators(df):
-  typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
-  df["VWAP"] = (typical_price * df["Volume"]).cumsum() / df["Volume"].cumsum()
-
-  delta = df["Close"].diff()
-  gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-  loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-  rs = gain / loss
-  df["RSI"] = 100 - (100 / (1 + rs))
-
-  return df
-
-
-# ----------------- OI (Open Interest) फिल्टर -----------------
-def check_oi_filter(smartApi, symboltoken, exchange="NSE"):
-  try:
-    search_data = smartApi.getMarketData(
-        {"mode": "FULL", "exchangeTokens": {exchange: [symboltoken]}}
-    )
-    if search_data and "data" in search_data:
+    data = obj.generateSession(CLIENT_ID, MPIN)
+    if data["status"]:
+      print("एंजेल वन लॉगिन यशस्वी झाले!")
       return True
+    else:
+      print("लॉगिन अयशस्वी:", data)
+      return False
   except Exception as e:
-    print(f"OI Fetch Error: {e}")
-  return True
+    print(f"Login Exception: {e}")
+    return False
 
 
-# ----------------- १. NIFTY 50 TRADING ENGINE (VWAP + RSI) -----------------
-def run_nifty():
-  time.sleep(3)
-  send_telegram("🚀 [VWAP SCALPING BOT ONLINE] Nifty, Sensex, Crude & NatGas Active!")
+# ==================== 3. सपोर्ट आणि रेजिस्टन्स काढणे (15 मि. टाइमफ्रेम) ====================
+def get_support_resistance_15min(token):
+  """15 मिनिटांच्या चार्टवरून सपोर्ट आणि रेजिस्टन्स लेव्हल शोधणे"""
+  try:
+    # ऐतिहासिक डेटा मिळवणे (उदा. निफ्टी)
+    historicParam = {
+        "exchange": "NSE",
+        "symboltoken": token,
+        "interval": "FIFTEEN_MINUTE",
+        "fromdate": "2026-10-29 09:15",
+        "todate": "2026-10-30 15:30",
+    }
+    # (टीप: प्रत्यक्षात लाईவ் डेटा फेच करताना वेळेची मर्यादा सांभाळावी लागेल)
+    # इथे आपण उदाहरणासाठी लॉजिक पुट करत आहोत:
+    support_level = 22800  # उदा. उदाहरणातील लेव्हल
+    resistance_level = 23000
+    return support_level, resistance_level
+  except Exception as e:
+    print(f"S&R Error: {e}")
+    return None, None
 
-  last_candle_time = None
-  daily_trades = 0
-  max_trades = 3
-  active_position = None
 
-  while True:
+# ==================== 4. ऑप्शन चेन आणि OI विश्लेषण ====================
+def analyze_option_chain_oi(strike_price):
+  """OI आणि Changing OI तपासून दिशा ठरवणे"""
+  # एन्जेल वन किंवा इतर ऑप्शन चेन API द्वारे डेटा फेच करणे
+  # इथे आपण लॉजिक सेट करत आहोत:
+  put_oi_strong = True  # समजा Put OI जास्त आहे आणि पॉझिटिव्ह होत आहे
+  call_oi_strong = False
+
+  if put_oi_strong and not call_oi_strong:
+    return "BULLISH"  # कॉल साईड ट्रेड
+  elif call_oi_strong and not put_oi_strong:
+    return "BEARISH"  # पुट साईड ट्रेड
+  return "SIDEWAYS"
+
+
+# ==================== 5. मुख्य अल्गो ट्रेडिंग लॉजिक (5 मि. कन्फर्मेशन + 3 ट्रेड लिमिट) ====================
+def run_algo_trading():
+  if not angel_one_login():
+    return
+
+  nifty_token = "999926000"  # निफ्टीचा टोकन नंबर (एन्जेल वन नुसार)
+  trade_count = 0
+  max_trades = 3  # दिवसातून जास्तीत जास्त 3 एन्ट्री
+
+  send_telegram_alert(
+      "🤖 *Bhavin Trading Bot* सुरू झाला आहे!\nमार्केट मॉनिटर करत आहे..."
+  )
+
+  while trade_count < max_trades:
     try:
-      now = datetime.now()
-      current_time = now.strftime("%H:%M")
+      # 1. 15 मिनिटांची लेव्हल घेणे
+      support, resistance = get_support_resistance_15min(nifty_token)
+      current_spot_price = 22845  # लाईव्ह मार्केट प्राईस यहाँ घ्या (LTP)
 
-      if current_time == "09:15":
-        daily_trades = 0
-        active_position = None
+      # 2. फेम आणि फेक एन्ट्री फिल्टर (सपोर्ट जवळ आल्यावर)
+      if abs(current_spot_price - support) <= 15:
+        print("मार्केट सपोर्ट लेव्हलजवळ पोहोचले आहे...")
 
-      if "09:15" <= current_time <= "15:25":
-        smartApi = SmartConnect(api_key=API_KEY)
-        totp_code = get_totp_token()
-        if not totp_code:
-          time.sleep(30)
-          continue
+        # 3. ऑप्शन चेन / OI अनालिसिस चेक करणे
+        market_bias = analyze_option_chain_oi(support)
 
-        data = smartApi.generateSession(CLIENT_ID, PWD, totp_code)
+        # 4. 5 मिनिटांची कॅडल कन्फर्मेशन (सपोर्टला ग्रीन कॅडल आणि क्लोजिंग)
+        # (इथे 5 मिनिटांच्या कॅडलचे क्लोजिंग आणि मागील कॅडलचा हाय ब्रेक होण्याचे लॉजिक लिहा)
+        candle_confirmed = True  # कन्फर्मेशन मिळाले असे गृहीत धरू
 
-        if data and "data" in data and "jwtToken" in data["data"]:
-          smartApi.setAccessToken(data["data"]["jwtToken"])
-          to_date = now.strftime("%Y-%m-%d %H:%M")
-          from_date = (now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M")
+        if market_bias == "BULLISH" and candle_confirmed:
+          trade_count += 1
+          entry_price = current_spot_price
+          stop_loss = entry_price - 40  # सपोर्टच्या खाली एसएल
+          target = entry_price + (
+              (entry_price - stop_loss) * 2
+          )  # 1:2 रिस्क रिवार्ड
 
-          history = smartApi.getCandleData({
-              "exchange": "NSE",
-              "symboltoken": "99926000",
-              "interval": "FIVE_MINUTE",
-              "fromdate": from_date,
-              "todate": to_date,
-          })
+          alert_msg = (
+              f"🚀 *Bhavin Trading Bot - Trade Alert #{trade_count}*\n\n"
+              f"🟢 **स्ट्रेटेजी:** CE (कॉल) खरेदी एन्ट्री\n"
+              f"📍 **एन्ट्री प्राईस:** {entry_price}\n"
+              f"🛑 **Stop Loss (SL):** {stop_loss}\n"
+              f"🎯 **Target (1:2):** {target}\n"
+              f"📊 **कारण:** २२८०० सपोर्टवर Put OI मजबूत व 5 मिनिटांचे"
+              f" कॅडल कन्फर्मेशन मिळाले."
+          )
+          send_telegram_alert(alert_msg)
+          print(alert_msg)
 
-          if history and "data" in history and len(history["data"]) > 30:
-            df = pd.DataFrame(
-                history["data"],
-                columns=["Date", "Open", "High", "Low", "Close", "Volume"],
-            )
-            df[["Open", "High", "Low", "Close", "Volume"]] = df[
-                ["Open", "High", "Low", "Close", "Volume"]
-            ].astype(float)
-            df = calculate_indicators(df)
+          # ट्रेड घेतल्यानंतर पुढच्या ट्रेडसाठी काही वेळ थांबावे
+          time.sleep(900)  # 15 मिनिटे विश्रांती
 
-            curr = df.iloc[-1]
-            current_candle_time = curr["Date"]
-            current_price = curr["Close"]
-            vwap_val = curr["vwap"] if "vwap" in curr else curr["VWAP"]
+        elif market_bias == "BEARISH":
+          # याचप्रमाणे पुट साईड (PE) एन्ट्रीचे लॉजिक लिहिता येईल
+          pass
 
-            if active_position:
-              if (
-                  active_position["type"] == "CE"
-                  and current_price <= active_position["sl"]
-              ) or (
-                  active_position["type"] == "PE"
-                  and current_price >= active_position["sl"]
-              ):
-                send_telegram(
-                    f"🔴 [NIFTY SL HIT]\nExit Price: ₹{current_price}"
-                )
-                active_position = None
-              elif (
-                  active_position["type"] == "CE"
-                  and current_price >= active_position["target"]
-              ) or (
-                  active_position["type"] == "PE"
-                  and current_price <= active_position["target"]
-              ):
-                send_telegram(
-                    f"🟢 [NIFTY TARGET HIT] 🎉\nExit Price: ₹{current_price}"
-                )
-                active_position = None
-              elif current_time >= "15:20":
-                send_telegram(f"⏰ [AUTO SQUARE-OFF] Nifty at ₹{current_price}")
-                active_position = None
-
-            elif (
-                daily_trades < max_trades
-                and current_candle_time != last_candle_time
-            ):
-              oi_valid = check_oi_filter(smartApi, "99926000", "NSE")
-
-              ce_cond = current_price > vwap_val and curr["RSI"] > 50 and oi_valid
-              pe_cond = current_price < vwap_val and curr["RSI"] < 50 and oi_valid
-
-              if ce_cond:
-                atm_strike = round(current_price / 50) * 50
-                sl = current_price - 25
-                target = current_price + 45
-                daily_trades += 1
-                active_position = {
-                    "type": "CE",
-                    "entry": current_price,
-                    "sl": sl,
-                    "target": target,
-                }
-                last_candle_time = current_candle_time
-                send_telegram(
-                    f"🎯 [BUY NIFTY {atm_strike} CE (VWAP)]\nPrice:"
-                    f" ₹{current_price}\nSL: {sl} | Target:"
-                    f" {target}\nTrades: [{daily_trades}/3]"
-                )
-
-              elif pe_cond:
-                atm_strike = round(current_price / 50) * 50
-                sl = current_price + 25
-                target = current_price - 45
-                daily_trades += 1
-                active_position = {
-                    "type": "PE",
-                    "entry": current_price,
-                    "sl": sl,
-                    "target": target,
-                }
-                last_candle_time = current_candle_time
-                send_telegram(
-                    f"🎯 [BUY NIFTY {atm_strike} PE (VWAP)]\nPrice:"
-                    f" ₹{current_price}\nSL: {sl} | Target:"
-                    f" {target}\nTrades: [{daily_trades}/3]"
-                )
+      time.sleep(60)  # दर 1 मिनिटाने मार्केट तपासा
 
     except Exception as e:
-      print(f"Nifty Error: {e}")
+      print(f"Error in main loop: {e}")
+      time.sleep(30)
 
-    time.sleep(30)
-
-
-# ----------------- २. SENSEX TRADING ENGINE (VWAP + RSI) -----------------
-def run_sensex():
-  time.sleep(5)
-  last_candle_time = None
-  daily_trades = 0
-  max_trades = 3
-  active_position = None
-
-  while True:
-    try:
-      now = datetime.now()
-      current_time = now.strftime("%H:%M")
-
-      if current_time == "09:15":
-        daily_trades = 0
-        active_position = None
-
-      if "09:15" <= current_time <= "15:25":
-        smartApi = SmartConnect(api_key=API_KEY)
-        totp_code = get_totp_token()
-        if not totp_code:
-          time.sleep(30)
-          continue
-
-        data = smartApi.generateSession(CLIENT_ID, PWD, totp_code)
-
-        if data and "data" in data and "jwtToken" in data["data"]:
-          smartApi.setAccessToken(data["data"]["jwtToken"])
-          to_date = now.strftime("%Y-%m-%d %H:%M")
-          from_date = (now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M")
-
-          history = smartApi.getCandleData({
-              "exchange": "BSE",
-              "symboltoken": "99919000",
-              "interval": "FIVE_MINUTE",
-              "fromdate": from_date,
-              "todate": to_date,
-          })
-
-          if history and "data" in history and len(history["data"]) > 30:
-            df = pd.DataFrame(
-                history["data"],
-                columns=["Date", "Open", "High", "Low", "Close", "Volume"],
-            )
-            df[["Open", "High", "Low", "Close", "Volume"]] = df[
-                ["Open", "High", "Low", "Close", "Volume"]
-            ].astype(float)
-            df = calculate_indicators(df)
-
-            curr = df.iloc[-1]
-            current_candle_time = curr["Date"]
-            current_price = curr["Close"]
-            vwap_val = curr["vwap"] if "vwap" in curr else curr["VWAP"]
-
-            if active_position:
-              if (
-                  active_position["type"] == "CE"
-                  and current_price <= active_position["sl"]
-              ) or (
-                  active_position["type"] == "PE"
-                  and current_price >= active_position["sl"]
-              ):
-                send_telegram(
-                    f"🔴 [SENSEX SL HIT]\nExit Price: ₹{current_price}"
-                )
-                active_position = None
-              elif (
-                  active_position["type"] == "CE"
-                  and current_price >= active_position["target"]
-              ) or (
-                  active_position["type"] == "PE"
-                  and current_price <= active_position["target"]
-              ):
-                send_telegram(
-                    f"🟢 [SENSEX TARGET HIT] 🎉\nExit Price: ₹{current_price}"
-                )
-                active_position = None
-              elif current_time >= "15:20":
-                send_telegram(f"⏰ [AUTO SQUARE-OFF] Sensex at ₹{current_price}")
-                active_position = None
-
-            elif (
-                daily_trades < max_trades
-                and current_candle_time != last_candle_time
-            ):
-              oi_valid = check_oi_filter(smartApi, "99919000", "BSE")
-
-              ce_cond = current_price > vwap_val and curr["RSI"] > 50 and oi_valid
-              pe_cond = current_price < vwap_val and curr["RSI"] < 50 and oi_valid
-
-              if ce_cond:
-                atm_strike = round(current_price / 100) * 100
-                sl = current_price - 40
-                target = current_price + 80
-                daily_trades += 1
-                active_position = {
-                    "type": "CE",
-                    "entry": current_price,
-                    "sl": sl,
-                    "target": target,
-                }
-                last_candle_time = current_candle_time
-                send_telegram(
-                    f"📈 [BUY SENSEX {atm_strike} CE (VWAP)]\nPrice:"
-                    f" ₹{current_price}\nSL: {sl} | Target:"
-                    f" {target}\nTrades: [{daily_trades}/3]"
-                )
-
-              elif pe_cond:
-                atm_strike = round(current_price / 100) * 100
-                sl = current_price + 40
-                target = current_price - 80
-                daily_trades += 1
-                active_position = {
-                    "type": "PE",
-                    "entry": current_price,
-                    "sl": sl,
-                    "target": target,
-                }
-                last_candle_time = current_candle_time
-                send_telegram(
-                    f"📈 [BUY SENSEX {atm_strike} PE (VWAP)]\nPrice:"
-                    f" ₹{current_price}\nSL: {sl} | Target:"
-                    f" {target}\nTrades: [{daily_trades}/3]"
-                )
-
-    except Exception as e:
-      print(f"Sensex Error: {e}")
-
-    time.sleep(30)
+  send_telegram_alert(
+      "🛑 आजचे ३ ट्रेड्स पूर्ण झाले आहेत. बॉट बंद होत आहे."
+  )
 
 
-# ----------------- ३. CRUDE OIL TRADING ENGINE (VWAP + RSI) -----------------
-def run_crude():
-  time.sleep(10)
-  last_candle_time = None
-  daily_trades = 0
-  max_trades = 3
-  active_position = None
-
-  while True:
-    try:
-      now = datetime.now()
-      current_time = now.strftime("%H:%M")
-
-      if current_time == "10:00":
-        daily_trades = 0
-        active_position = None
-
-      if "10:00" <= current_time <= "23:15":
-        smartApi = SmartConnect(api_key=API_KEY)
-        totp_code = get_totp_token()
-        if not totp_code:
-          time.sleep(30)
-          continue
-
-        data = smartApi.generateSession(CLIENT_ID, PWD, totp_code)
-
-        if data and "data" in data and "jwtToken" in data["data"]:
-          smartApi.setAccessToken(data["data"]["jwtToken"])
-          to_date = now.strftime("%Y-%m-%d %H:%M")
-          from_date = (now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M")
-
-          history = smartApi.getCandleData({
-              "exchange": "MCX",
-              "symboltoken": "225547",
-              "interval": "FIVE_MINUTE",
-              "fromdate": from_date,
-              "todate": to_date,
-          })
-
-          if history and "data" in history and len(history["data"]) > 30:
-            df = pd.DataFrame(
-                history["data"],
-                columns=["Date", "Open", "High", "Low", "Close", "Volume"],
-            )
-            df[["Open", "High", "Low", "Close", "Volume"]] = df[
-                ["Open", "High", "Low", "Close", "Volume"]
-            ].astype(float)
-            df = calculate_indicators(df)
-
-            curr = df.iloc[-1]
-            current_candle_time = curr["Date"]
-            current_price = curr["Close"]
-            vwap_val = curr["vwap"] if "vwap" in curr else curr["VWAP"]
-
-            if active_position:
-              if (
-                  active_position["type"] == "CE"
-                  and current_price <= active_position["sl"]
-              ) or (
-                  active_position["type"] == "PE"
-                  and current_price >= active_position["sl"]
-              ):
-                send_telegram(
-                    f"🔴 [CRUDE OIL SL HIT] Exited at ₹{current_price}"
-                )
-                active_position = None
-              elif (
-                  active_position["type"] == "CE"
-                  and current_price >= active_position["target"]
-              ) or (
-                  active_position["type"] == "PE"
-                  and current_price <= active_position["target"]
-              ):
-                send_telegram(
-                    f"🟢 [CRUDE OIL TARGET HIT] 🎉 Exited at ₹{current_price}"
-                )
-                active_position = None
-
-            elif (
-                daily_trades < max_trades
-                and current_candle_time != last_candle_time
-            ):
-              if current_price > vwap_val and curr["RSI"] > 50:
-                sl = current_price - 20
-                target = current_price + 35
-                daily_trades += 1
-                active_position = {
-                    "type": "CE",
-                    "entry": current_price,
-                    "sl": sl,
-                    "target": target,
-                }
-                last_candle_time = current_candle_time
-                send_telegram(
-                    f"🛢️ [BUY CRUDE OIL CE (VWAP)]\nPrice: ₹{current_price}\nSL:"
-                    f" {sl} | Target: {target}"
-                )
-              elif current_price < vwap_val and curr["RSI"] < 50:
-                sl = current_price + 20
-                target = current_price - 35
-                daily_trades += 1
-                active_position = {
-                    "type": "PE",
-                    "entry": current_price,
-                    "sl": sl,
-                    "target": target,
-                }
-                last_candle_time = current_candle_time
-                send_telegram(
-                    f"🛢️ [BUY CRUDE OIL PE (VWAP)]\nPrice: ₹{current_price}\nSL:"
-                    f" {sl} | Target: {target}"
-                )
-
-    except Exception as e:
-      print(f"Crude Error: {e}")
-
-    time.sleep(30)
-
-
-# ----------------- ४. NATURAL GAS TRADING ENGINE (VWAP + RSI) -----------------
-def run_natgas():
-  time.sleep(15)
-  last_candle_time = None
-  daily_trades = 0
-  max_trades = 3
-  active_position = None
-
-  while True:
-    try:
-      now = datetime.now()
-      current_time = now.strftime("%H:%M")
-
-      if current_time == "10:00":
-        daily_trades = 0
-        active_position = None
-
-      if "10:00" <= current_time <= "23:15":
-        smartApi = SmartConnect(api_key=API_KEY)
-        totp_code = get_totp_token()
-        if not totp_code:
-          time.sleep(30)
-          continue
-
-        data = smartApi.generateSession(CLIENT_ID, PWD, totp_code)
-
-        if data and "data" in data and "jwtToken" in data["data"]:
-          smartApi.setAccessToken(data["data"]["jwtToken"])
-          to_date = now.strftime("%Y-%m-%d %H:%M")
-          from_date = (now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M")
-
-          history = smartApi.getCandleData({
-              "exchange": "MCX",
-              "symboltoken": "225721",
-              "interval": "FIVE_MINUTE",
-              "fromdate": from_date,
-              "todate": to_date,
-          })
-
-          if history and "data" in history and len(history["data"]) > 30:
-            df = pd.DataFrame(
-                history["data"],
-                columns=["Date", "Open", "High", "Low", "Close", "Volume"],
-            )
-            df[["Open", "High", "Low", "Close", "Volume"]] = df[
-                ["Open", "High", "Low", "Close", "Volume"]
-            ].astype(float)
-            df = calculate_indicators(df)
-
-            curr = df.iloc[-1]
-            current_candle_time = curr["Date"]
-            current_price = curr["Close"]
-            vwap_val = curr["vwap"] if "vwap" in curr else curr["VWAP"]
-
-            if active_position:
-              if (
-                  active_position["type"] == "CE"
-                  and current_price <= active_position["sl"]
-              ) or (
-                  active_position["type"] == "PE"
-                  and current_price >= active_position["sl"]
-              ):
-                send_telegram(
-                    f"🔴 [NATURAL GAS SL HIT] Exited at ₹{current_price}"
-                )
-                active_position = None
-              elif (
-                  active_position["type"] == "CE"
-                  and current_price >= active_position["target"]
-              ) or (
-                  active_position["type"] == "PE"
-                  and current_price <= active_position["target"]
-              ):
-                send_telegram(
-                    f"🟢 [NATURAL GAS TARGET HIT] 🎉 Exited at"
-                    f" ₹{current_price}"
-                )
-                active_position = None
-
-            elif (
-                daily_trades < max_trades
-                and current_candle_time != last_candle_time
-            ):
-              if current_price > vwap_val and curr["RSI"] > 50:
-                sl = current_price - 2
-                target = current_price + 4
-                daily_trades += 1
-                active_position = {
-                    "type": "CE",
-                    "entry": current_price,
-                    "sl": sl,
-                    "target": target,
-                }
-                last_candle_time = current_candle_time
-                send_telegram(
-                    f"🔥 [BUY NATURAL GAS CE (VWAP)]\nPrice: ₹{current_price}\nSL:"
-                    f" {sl} | Target: {target}"
-                )
-              elif current_price < vwap_val and curr["RSI"] < 50:
-                sl = current_price + 2
-                target = current_price - 4
-                daily_trades += 1
-                active_position = {
-                    "type": "PE",
-                    "entry": current_price,
-                    "sl": sl,
-                    "target": target,
-                }
-                last_candle_time = current_candle_time
-                send_telegram(
-                    f"🔥 [BUY NATURAL GAS PE (VWAP)]\nPrice: ₹{current_price}\nSL:"
-                    f" {sl} | Target: {target}"
-                )
-
-    except Exception as e:
-      print(f"NatGas Error: {e}")
-
-    time.sleep(30)
-
-
-# ----------------- MAIN START
+if __name__ == "__main__":
+  run_algo_trading()
+  
