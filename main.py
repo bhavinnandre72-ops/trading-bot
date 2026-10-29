@@ -62,8 +62,10 @@ def run_multi_index_algo():
     if not angel_one_login():
         send_telegram_alert("⚠️ *[SYSTEM ERROR]* एंजेल वन लॉगिन फेल झाले आहे!")
         return
+    
+    # 🟢 हा टेस्ट मेसेज इथे टाका, म्हणजे बॉट सुरू होताच टेलिग्रामला मेसेज येईल!
+    send_telegram_alert("🚀 *[TEST MESSAGE]* Bhavin Trading Bot यशस्वीरित्या सुरू झाला आहे आणि मार्केट मॉनिटर करत आहे!")
 
-    # Nifty 50 आणि Sensex चे टोकन्स आणि सपोर्ट लेव्हल्स
     indices = {
         "NIFTY": {"exchange": "NSE", "token": "999926000", "support": 22800},
         "SENSEX": {"exchange": "BSE", "token": "999901", "support": 73500}
