@@ -3,6 +3,7 @@ import requests
 from SmartApi import SmartConnect
 import pandas as pd
 import numpy as np
+import pyotp
 
 # ==================== 1. कॉन्फिगरेशन आणि क्रेडेंशियल्स ====================
 API_KEY = "iemEXsyV"
@@ -34,12 +35,15 @@ def send_telegram_alert(message):
 # ==================== 2. लॉगइन फंक्शन ====================
 def angel_one_login():
     try:
-        data = obj.generateSession(CLIENT_ID, MPIN, TOTP_KEY)
+        # सीक्रेट की पासून सध्याचा लाईव्ह ६ अंकी OTP जनरेट करणे
+        current_totp = pyotp.TOTP(TOTP_KEY).now()
+        
+        data = obj.generateSession(CLIENT_ID, MPIN, current_totp)
+        
         if data and data.get("status"):
             print("एंजेल वन लॉगिन यशस्वी झाले!")
             return True
         else:
-            # 🔴 हा एरर थेट टेलिग्रामवर पाठवण्यासाठी:
             error_msg = f"⚠️ *[LOGIN FAILED]* कारण: {data}"
             send_telegram_alert(error_msg)
             print("लॉगिन अयशस्वी:", data)
