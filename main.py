@@ -5,13 +5,12 @@ import pandas as pd
 import numpy as np
 
 # ==================== 1. कॉन्फिगरेशन आणि क्रेडेंशियल्स ====================
-API_KEY = "ianEntxyV"
-CLIENT_ID = "R253694"
+API_KEY = "iemEXsyV"
+CLIENT_ID = "B253694"
 MPIN = "7172"
-TOTP_KEY = "D4YNATHBAJVFIVOCYVUOPJNVIE"
-
+TOTP_KEY = "D4YNATHBA3VFIW5C7YUQPJNVIE"
 # टेलिग्राम बॉटची माहिती (Bhavin Trading Bot)
-TELEGRAM_BOT_TOKEN = "6667131376:AAE_h_p7iHL9xuK_bkxYJDAPMUFR9CI8LX1"
+TELEGRAM_BOT_TOKEN = "8667131376:AAE_b_p7lhL0xuK_bkxYJOAPMUFR9CIBLX0"
 TELEGRAM_CHAT_ID = "1486399523"
 
 # ऑब्जेक्ट इनिशिलायझेशन
@@ -59,12 +58,14 @@ def get_live_market_data(exchange, symbol_token):
 
 # ==================== 4. मुख्य अल्गो ट्रेडिंग लॉजिक (Nifty आणि Sensex) ====================
 def run_multi_index_algo():
+    # लॉगिन करण्याच्या आधीच टेलिग्राम मेसेज पाठवून तपासा
+    send_telegram_alert("🧪 *[TEST]* बॉट चालू होत आहे...")
+    
     if not angel_one_login():
         send_telegram_alert("⚠️ *[SYSTEM ERROR]* एंजेल वन लॉगिन फेल झाले आहे!")
         return
     
-    # बॉट चालू झाल्याची टेलिग्रामवर खात्रीशीर पोच
-    send_telegram_alert("🚀 *[SYSTEM ONLINE]* Bhavin Multi-Market Trading Bot (Nifty & Sensex) सक्रिय झाला आहे!")
+    send_telegram_alert("🚀 *[SYSTEM ONLINE]* Bhavin Multi-Market Trading Bot सक्रिय झाला आहे!")
 
     # Nifty 50 आणि Sensex चे टोकन्स आणि सपोर्ट लेव्हल्स
     indices = {
