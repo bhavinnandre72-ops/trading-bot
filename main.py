@@ -32,9 +32,11 @@ def send_telegram_alert(message):
 
 def angel_one_login():
     try:
-        # लाईव्ह TOTP जनरेट करणे
+        # सीक्रेट की पासून सध्याचा लाईव्ह ६ अंकी OTP जनरेट करणे
         current_totp = pyotp.TOTP(TOTP_KEY).now()
+        
         data = obj.generateSession(CLIENT_ID, MPIN, current_totp)
+        
         if data and data.get("status"):
             print("एंजेल वन लॉगिन यशस्वी झाले!")
             return True
