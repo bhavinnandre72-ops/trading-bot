@@ -7,9 +7,9 @@ import pyotp
 
 # ==================== 1. कॉन्फिगरेशन आणि तुमचे अचूक क्रेडेंशियल्स ====================
 API_KEY = "ianEntxyV"
-CLIENT_ID = "B253694"  # अपडेटेड Client ID
+CLIENT_ID = "B253694"
 MPIN = "7172"
-TOTP_KEY = "D4YNATHBAJVFIVOCYVUOPJNVIE"
+TOTP_KEY = "D4YNATHBA3VFIW5C7YUQPJNVIE"
 
 # टेलिग्राम बॉटची माहिती (नवीन टोकनसह)
 TELEGRAM_BOT_TOKEN = "8667131376:AAE_b_p7lhL0xuK_bkxYJOAPMUFR9CIBLX0"
