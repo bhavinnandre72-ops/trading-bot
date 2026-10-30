@@ -3,3 +3,4 @@ logzero
 requests
 pandas
 numpy
+websocket-client
