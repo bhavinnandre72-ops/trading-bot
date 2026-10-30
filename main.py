@@ -5,12 +5,13 @@ import pandas as pd
 import numpy as np
 import pyotp
 
-# ==================== 1. कॉन्फिगरेशन आणि क्रेडेंशियल्स ====================
-API_KEY = "iemEXsyV"
-CLIENT_ID = "B253694"
+# ==================== 1. कॉन्फिगरेशन आणि तुमचे अचूक क्रेडेंशियल्स ====================
+API_KEY = "ianEntxyV"
+CLIENT_ID = "B253694"  # अपडेटेड Client ID
 MPIN = "7172"
-TOTP_KEY = "D4YNATHBA3VFIW5C7YUQPJNVIE"
-# टेलिग्राम बॉटची माहिती (Bhavin Trading Bot)
+TOTP_KEY = "D4YNATHBAJVFIVOCYVUOPJNVIE"
+
+# टेलिग्राम बॉटची माहिती (नवीन टोकनसह)
 TELEGRAM_BOT_TOKEN = "8667131376:AAE_b_p7lhL0xuK_bkxYJOAPMUFR9CIBLX0"
 TELEGRAM_CHAT_ID = "1486399523"
 
@@ -18,7 +19,6 @@ TELEGRAM_CHAT_ID = "1486399523"
 obj = SmartConnect(api_key=API_KEY)
 
 def send_telegram_alert(message):
-    """'Bhavin Trading Bot' द्वारे टेलिग्रामवर अलर्ट पाठवण्यासाठीचे फंक्शन"""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
@@ -26,20 +26,15 @@ def send_telegram_alert(message):
             "text": message,
             "parse_mode": "Markdown"
         }
-        response = requests.post(url, json=payload)
-        if not response.json().get("ok"):
-            print("Telegram Alert Failed:", response.text)
+        requests.post(url, json=payload)
     except Exception as e:
         print(f"Telegram Error: {e}")
 
-# ==================== 2. लॉगइन फंक्शन ====================
 def angel_one_login():
     try:
-        # सीक्रेट की पासून सध्याचा लाईव्ह ६ अंकी OTP जनरेट करणे
+        # लाईव्ह TOTP जनरेट करणे
         current_totp = pyotp.TOTP(TOTP_KEY).now()
-        
         data = obj.generateSession(CLIENT_ID, MPIN, current_totp)
-        
         if data and data.get("status"):
             print("एंजेल वन लॉगिन यशस्वी झाले!")
             return True
@@ -54,9 +49,7 @@ def angel_one_login():
         print(f"Login Exception: {e}")
         return False
 
-# ==================== 3. लाईव्ह मार्केट प्राईस (LTP) फेच करणे ====================
 def get_live_market_data(exchange, symbol_token):
-    """एंजेल वन API वरून Nifty 50 किंवा Sensex चा लाईव्ह LTP मिळवणे"""
     try:
         ltp_data = obj.ltpData(exchange, symbol_token, symbol_token)
         if ltp_data and ltp_data.get("status"):
@@ -65,74 +58,110 @@ def get_live_market_data(exchange, symbol_token):
         print(f"LTP Fetch Error: {e}")
     return None
 
-# ==================== 4. मुख्य अल्गो ट्रेडिंग लॉजिक (Nifty आणि Sensex) ====================
-def run_multi_index_algo():
-    # लॉगिन करण्याच्या आधीच टेलिग्राम मेसेज पाठवून तपासा
+# ==================== 2. पेपर ट्रेडिंग ऑटोमॅटिक लॉजिक ====================
+def run_paper_trading_bot():
     send_telegram_alert("🧪 *[TEST]* बॉट चालू होत आहे...")
     
     if not angel_one_login():
         send_telegram_alert("⚠️ *[SYSTEM ERROR]* एंजेल वन लॉगिन फेल झाले आहे!")
         return
     
-    send_telegram_alert("🚀 *[SYSTEM ONLINE]* Bhavin Multi-Market Trading Bot सक्रिय झाला आहे!")
+    virtual_capital = 15000.0  # ₹१५,००० पेपर ट्रेडिंग कॅपिटल
+    send_telegram_alert(f"🚀 *[PAPER TRADING ONLINE]* Bhavin Bot सक्रिय!\n💰 व्हर्च्युअल कॅपिटल: ₹{virtual_capital}")
 
-    # Nifty 50 आणि Sensex चे टोकन्स आणि सपोर्ट लेव्हल्स
     indices = {
-        "NIFTY": {"exchange": "NSE", "token": "999926000", "support": 22800},
-        "SENSEX": {"exchange": "BSE", "token": "999901", "support": 73500}
+        "NIFTY": {"exchange": "NSE", "token": "999926000", "support": 22800}
     }
 
     trade_count = 0
-    max_trades = 3  # दिवसातून जास्तीत जास्त ३ ट्रेडची मर्यादा
+    max_trades = 3  # दिवसातून जास्तीत जास्त ३ ट्रेड
 
     while trade_count < max_trades:
         try:
             for index_name, data in indices.items():
                 current_spot_price = get_live_market_data(data["exchange"], data["token"])
-                
                 if not current_spot_price:
                     continue
 
                 support_level = data["support"]
-                print(f"Monitoring {index_name} | Current LTP: {current_spot_price} | Support: {support_level}")
+                print(f"Monitoring {index_name} | LTP: {current_spot_price} | Support: {support_level}")
 
-                # सपोर्ट लेव्हलजवळ आल्यावर तपासणे (Nifty साठी 20 पॉईंट्स, Sensex साठी 100 पॉईंट्स रेंज)
-                range_limit = 20 if index_name == "NIFTY" else 100
-                if abs(current_spot_price - support_level) <= range_limit:
+                # सपोर्ट लेव्हलजवळ आल्यावर ट्रेड घेणे
+                if abs(current_spot_price - support_level) <= 20:
+                    trade_count += 1
+                    entry_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                    entry_price = current_spot_price
+                    stop_loss = entry_price - 30
                     
-                    # ऑप्शन चेन / OI अनालिसिस आणि 5 मिनिट कॅडल कन्फर्मेशन
-                    market_bias = "BULLISH"   # पुट OI मजबूत असल्याचे गृहीत धरून
-                    candle_confirmed = True   # 5 मिनिटांचे कन्फर्मेशन मिळाले
+                    # रिस्क-रिवार्ड रेशो (1:2 आणि 1:3 टार्गेट सेट करणे)
+                    risk = entry_price - stop_loss
+                    target_1_2 = entry_price + (risk * 2)  # 1:2 टार्गेट
+                    target_1_3 = entry_price + (risk * 3)  # 1:3 टार्गेट
+                    
+                    target = target_1_2  # मुख्य टार्गेट 1:2 नुसार
 
-                    if market_bias == "BULLISH" and candle_confirmed:
-                        trade_count += 1
-                        entry_price = current_spot_price
-                        stop_loss = entry_price - (40 if index_name == "NIFTY" else 150)
-                        target = entry_price + ((entry_price - stop_loss) * 2)  # 1:2 रिस्क-रिवार्ड टार्गेट
+                    # एन्ट्री मेसेज (वेळेसह)
+                    entry_msg = (
+                        f"🟢 *[PAPER TRADE ENTRY #{trade_count}]*\n"
+                        f"──────────────────\n"
+                        f"⏳ एन्ट्री वेळ: {entry_time}\n"
+                        f"📊 इंडेक्स: {index_name}\n"
+                        f"📍 एन्ट्री प्राईस: ₹{entry_price}\n"
+                        f"🛑 स्टॉपलॉस: ₹{stop_loss}\n"
+                        f"🎯 टार्गेट (1:2): ₹{target} | (1:3 साठी: ₹{target_1_3})\n"
+                        f"💰 उपलब्ध कॅपिटल: ₹{virtual_capital}"
+                    )
+                    send_telegram_alert(entry_msg)
 
-                        alert_msg = (
-                            f"🟢 *[{index_name} LIVE ENTRY #{trade_count}]*\n"
-                            f"──────────────────\n"
-                            f"⏳ वेळ: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                            f"⚡ प्रकार: BUY CALL (CE)\n"
-                            f"📊 इंडेक्स: {index_name}\n"
-                            f"📍 एन्ट्री प्राईस: ₹{entry_price}\n"
-                            f"🛑 स्टॉपलॉस: ₹{stop_loss}\n"
-                            f"🎯 टार्गेट (1:2): ₹{target}\n"
-                            f"💡 कारण: १५ मिनिट सपोर्ट लेव्हलवर पुट OI मजबूत व ५ मिनिटे कॅडल कन्फर्मेशन मिळाले."
-                        )
-                        send_telegram_alert(alert_msg)
-                        print(alert_msg)
+                    # ट्रेड लाईव्ह मॉनिटर करणे आणि एक्झिट वेळेची नोंद ठेवणे
+                    position_active = True
+                    while position_active:
+                        time.sleep(10)
+                        live_price = get_live_market_data(data["exchange"], data["token"])
+                        if not live_price:
+                            continue
 
-                        time.sleep(900)  # ट्रेडनंतर १५ मिनिटे विश्रांती
+                        exit_time = time.strftime('%Y-%m-%d %H:%M:%S')
 
-            time.sleep(60)  # दर १ मिनिटाने दोन्ही इंडेक्स तपासणे
+                        # टार्गेट हिट झाल्यास
+                        if live_price >= target:
+                            profit = (target - entry_price) * 15  # १ लॉट (१५ क्वांटिटी)
+                            virtual_capital += profit
+                            exit_msg = (
+                                f"🎯 *[TARGET HIT #{trade_count}]*\n"
+                                f"──────────────────\n"
+                                f"⏳ एक्झिट वेळ: {exit_time}\n"
+                                f"✅ नफा: +₹{profit}\n"
+                                f"💰 एकूण कॅपिटल: ₹{virtual_capital}\n"
+                                f"🏁 पोझिशन यशस्वीरित्या क्लोज झाली."
+                            )
+                            send_telegram_alert(exit_msg)
+                            position_active = False
 
+                        # स्टॉपलॉस हिट झाल्यास
+                        elif live_price <= stop_loss:
+                            loss = (entry_price - stop_loss) * 15
+                            virtual_capital -= loss
+                            exit_msg = (
+                                f"🛑 *[STOPLOSS HIT #{trade_count}]*\n"
+                                f"──────────────────\n"
+                                f"⏳ एक्झिट वेळ: {exit_time}\n"
+                                f"❌ नुकसान: -₹{loss}\n"
+                                f"💰 एकूण कॅपिटल: ₹{virtual_capital}\n"
+                                f"🏁 पोझिशन क्लोज झाली."
+                            )
+                            send_telegram_alert(exit_msg)
+                            position_active = False
+
+                    time.sleep(300) # ट्रेडनंतर ५ मिनिटे विश्रांती
+
+            time.sleep(60)
         except Exception as e:
-            print(f"Error in main loop: {e}")
+            print(f"Error: {e}")
             time.sleep(30)
 
-    send_telegram_alert("🛑 *[SYSTEM STOP]* आजचे ३ ट्रेड्स यशस्वीरित्या पूर्ण झाले आहेत. बॉट बंद होत आहे.")
+    send_telegram_alert(f"🛑 *[TRADING FINISHED]* आजचे ३ ट्रेड्स पूर्ण झाले. अंतिम कॅपिटल: ₹{virtual_capital}")
 
 if __name__ == "__main__":
-    run_multi_index_algo()
+    run_paper_trading_bot()
+    
