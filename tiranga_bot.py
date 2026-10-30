@@ -57,11 +57,12 @@ def scan_tiranga_strategy():
                 candle_low = curr['Low']  # स्टॉप लॉससाठी डेली कॅंडलचा लो
                 close_price = curr['Close']
 
-                msg = (
+                                msg = (
                     f"🟢 *Daily Tiranga Strategy Alert* 🚀\n\n"
                     f"📈 *Stock:* `{stock}`\n"
                     f"⏰ *Timeframe:* Daily (1D)\n"
-                    f"🟢🔵🟠 *Pattern:* Bullish Crossover (EMA 5 > EMA 13 > EMA 26)\n"
+                    f"🧡🤍💚 *Pattern:* Bullish Crossover\n"
+                    f"*(EMA 5 🧡 > EMA 13 🤍 > EMA 26 💚)*\n"
                     f"💰 *Close Price:* `{close_price:.2f}`\n"
                     f"🛑 *Stop Loss (Low):* `{candle_low:.2f}`"
                 )
