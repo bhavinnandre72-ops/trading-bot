@@ -39,9 +39,14 @@ def angel_one_login():
             print("एंजेल वन लॉगिन यशस्वी झाले!")
             return True
         else:
+            # 🔴 हा एरर थेट टेलिग्रामवर पाठवण्यासाठी:
+            error_msg = f"⚠️ *[LOGIN FAILED]* कारण: {data}"
+            send_telegram_alert(error_msg)
             print("लॉगिन अयशस्वी:", data)
             return False
     except Exception as e:
+        error_msg = f"⚠️ *[LOGIN EXCEPTION]* एरर: {e}"
+        send_telegram_alert(error_msg)
         print(f"Login Exception: {e}")
         return False
 
