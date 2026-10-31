@@ -18,10 +18,10 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies
+      -       - name: Install dependencies
         run: |
-          pip install smartapi-python pandas numpy requests ta logzero websocket-client
-
+          pip install --upgrade pip
+          pip install smartapi-python pandas numpy requests ta logzero websocket-client urllib3
       - name: Run Trading Bot
         run: |
           python commodity_algo.py
