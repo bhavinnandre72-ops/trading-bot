@@ -1,0 +1,28 @@
+name: Commodity Algo Bot
+
+on:
+  schedule:
+    # दर १५ मिनिटांनी स्वयंचलितपणे बॉट रन होईल
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # मॅन्युअली रन करण्यासाठी
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install smartapi-python pandas numpy requests ta logzero websocket-client urllib3
+
+      - name: Run Trading Bot
+        run: |
+          python commodity_algo.py
