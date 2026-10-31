@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install smartapi-python pandas numpy requests ta
+          pip install smartapi-python pandas numpy requests ta logzero
 
       - name: Run Trading Bot
         run: |
