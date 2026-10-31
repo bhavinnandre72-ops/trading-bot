@@ -1,11 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import numpy as np
 import pandas as pd
 import requests
-
-# आवश्यक लायब्ररी इन्स्टॉल करण्यासाठी कमांड:
-# pip install smartapi-python pandas numpy requests ta
 
 from SmartApi import SmartConnect
 
@@ -46,18 +43,41 @@ class CommodityTelegramTrader:
     except Exception as e:
       print('Telegram Error:', e)
 
-  def login(self):
+  def login_and_fetch_data(self, symbol_token, exchange='MCX', interval='FIVE_MINUTE'):
     try:
       data = self.smart_api.generateSession(self.client_id, self.pwd)
       if data['status']:
         print('Angel One API लॉगिन यशस्वी झाले!')
-        self.send_telegram_alert(
-            '🤖 *Commodity Algo Bot Started!*\nAngel One Login Successful.'
-        )
+        
+        # मागील काही दिवसांचा डेटा फेच करणे
+        to_date = datetime.now().strftime('%Y-%m-%d %H:%M')
+        from_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d %H:%M')
+        
+        historic_param = {
+            "exchange": exchange,
+            "symboltoken": symbol_token,
+            "interval": interval,
+            "fromdate": from_date,
+            "todate": to_date
+        }
+        
+        response = self.smart_api.getCandleData(historic_param)
+        if response['status'] and response['data']:
+          # डेटाला Pandas DataFrame मध्ये कन्वर्ट करणे
+          df = pd.DataFrame(response['data'], columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
+          df['Close'] = df['Close'].astype(float)
+          df['High'] = df['High'].astype(float)
+          df['Low'] = df['Low'].astype(float)
+          return df
+        else:
+          print('डेटा फेच करण्यात अपयश:', response.get('message'))
+          return None
       else:
         print('लॉगिन फेल झाले:', data['message'])
+        return None
     except Exception as e:
-      print('लॉगिन करताना एरर आली:', e)
+      print('लॉगिन किंवा डेटा फेच करताना एरर आली:', e)
+      return None
 
   def calculate_indicators(self, df):
     # 1. Moving Average 60 (SMA 60)
@@ -77,38 +97,30 @@ class CommodityTelegramTrader:
 
     return df
 
-  def execute_paper_trade(self, df, symbol):
-    df = self.calculate_indicators(df)
-    i = len(df) - 1
+  def run_strategy(self, symbol_name, symbol_token):
+    print(f'{symbol_name} साठी डेटा तपासत आहे...')
+    df = self.login_and_fetch_data(symbol_token)
+    
+    if df is not None and len(df) > 60:
+      df = self.calculate_indicators(df)
+      i = len(df) - 1
 
-    current_close = df['Close'].iloc[i]
-    prev_close = df['Close'].iloc[i - 1]
-    curr_ma = df['MA_60'].iloc[i]
-    prev_ma = df['MA_60'].iloc[i - 1]
-    stoch_k = df['Stoch_RSI_%K'].iloc[i]
+      current_close = df['Close'].iloc[i]
+      prev_close = df['Close'].iloc[i - 1]
+      curr_ma = df['MA_60'].iloc[i]
+      prev_ma = df['MA_60'].iloc[i - 1]
+      stoch_k = df['Stoch_RSI_%K'].iloc[i]
 
-    # पोझिशन नसताना नवीन एंट्री शोधणे
-    if self.position is None:
       # --- BUY / CE ENTRY ---
-      if (
-          current_close > curr_ma
-          and prev_close <= prev_ma
-          and (stoch_k > 35 or stoch_k > 75)
-      ):
+      if current_close > curr_ma and prev_close <= prev_ma and (stoch_k > 35 or stoch_k > 75):
         sl_price = df['Low'].iloc[i - 1]
         risk = current_close - sl_price
-        target_price = current_close + (2 * risk)  # 1:2 टार्गेट
-
+        target_price = current_close + (2 * risk)
         self.quantity = max(1, int(self.capital / current_close))
-        self.position = 'BUY'
-        self.entry_price = current_close
-        self.sl = sl_price
-        self.target = target_price
 
-        # टेलिग्राम अलर्ट मेसेज
         msg = (
             f'🟢 *COMMODITY BUY / CE SIGNAL* 🟢\n\n'
-            f'📦 *Symbol:* {symbol}\n'
+            f'📦 *Symbol:* {symbol_name}\n'
             f'💰 *Entry Price:* {current_close}\n'
             f'🛑 *Stop Loss:* {sl_price}\n'
             f'🎯 *Target:* {target_price}\n'
@@ -119,25 +131,15 @@ class CommodityTelegramTrader:
         print(msg)
 
       # --- SELL / PE ENTRY ---
-      elif (
-          current_close < curr_ma
-          and prev_close >= prev_ma
-          and (stoch_k < 75 or stoch_k < 35)
-      ):
+      elif current_close < curr_ma and prev_close >= prev_ma and (stoch_k < 75 or stoch_k < 35):
         sl_price = df['High'].iloc[i - 1]
         risk = sl_price - current_close
         target_price = current_close - (2 * risk)
-
         self.quantity = max(1, int(self.capital / current_close))
-        self.position = 'SELL'
-        self.entry_price = current_close
-        self.sl = sl_price
-        self.target = target_price
 
-        # टेलिग्राम अलर्ट मेसेज
         msg = (
             f'🔴 *COMMODITY SELL / PE SIGNAL* 🔴\n\n'
-            f'📦 *Symbol:* {symbol}\n'
+            f'📦 *Symbol:* {symbol_name}\n'
             f'💰 *Entry Price:* {current_close}\n'
             f'🛑 *Stop Loss:* {sl_price}\n'
             f'🎯 *Target:* {target_price}\n'
@@ -146,73 +148,27 @@ class CommodityTelegramTrader:
         )
         self.send_telegram_alert(msg)
         print(msg)
-
-    # चालू ट्रेडसाठी SL किंवा Target हिट होणे तपासणे
-    elif self.position == 'BUY':
-      if current_close <= self.sl:
-        pnl = (self.sl - self.entry_price) * self.quantity
-        self.capital += pnl
-        msg = (
-            f'❌ *BUY TRADE SL HIT* ❌\nSymbol: {symbol}\nLoss: ₹{pnl}\nUpdated'
-            f' Capital: ₹{self.capital}'
-        )
-        self.send_telegram_alert(msg)
-        self.position = None
-      elif current_close >= self.target:
-        pnl = (self.target - self.entry_price) * self.quantity
-        self.capital += pnl
-        msg = (
-            f'✅ *BUY TRADE TARGET HIT* ✅\nSymbol: {symbol}\nProfit:'
-            f' ₹{pnl}\nUpdated Capital: ₹{self.capital}'
-        )
-        self.send_telegram_alert(msg)
-        self.position = None
-
-    elif self.position == 'SELL':
-      if current_close >= self.sl:
-        pnl = (self.entry_price - self.sl) * self.quantity
-        self.capital += pnl
-        msg = (
-            f'❌ *SELL TRADE SL HIT* ❌\nSymbol: {symbol}\nLoss: ₹{pnl}\nUpdated'
-            f' Capital: ₹{self.capital}'
-        )
-        self.send_telegram_alert(msg)
-        self.position = None
-      elif current_close <= self.target:
-        pnl = (self.entry_price - self.target) * self.quantity
-        self.capital += pnl
-        msg = (
-            f'✅ *SELL TRADE TARGET HIT* ✅\nSymbol: {symbol}\nProfit:'
-            f' ₹{pnl}\nUpdated Capital: ₹{self.capital}'
-        )
-        self.send_telegram_alert(msg)
-        self.position = None
+      else:
+        print(f'{symbol_name} साठी सध्या कोणतीही एंट्री नाही.')
+    else:
+      print('डेटा अपुरा आहे किंवा फेच झाला नाही.')
 
 
-# --- मुख्य प्रोग्राम (तुमची माहिती इथे भरलेली आहे) ---
 if __name__ == '__main__':
   API_KEY = 'iemEXsyV'
   CLIENT_ID = 'B253694'
-  PWD = '7172'  # तुमचा पिन
+  PWD = '7172'
 
   TELEGRAM_TOKEN = '9248058546:AAGWN9FI9MjTgbw5xlAI3QiPUL4Ia2dUvLI'
   CHAT_ID = '9248058546'
 
   trader = CommodityTelegramTrader(
-      API_KEY,
-      CLIENT_ID,
-      PWD,
-      TELEGRAM_TOKEN,
-      CHAT_ID,
-      initial_capital=15000,
+      API_KEY, CLIENT_ID, PWD, TELEGRAM_TOKEN, CHAT_ID, initial_capital=15000
   )
 
-  # बॉट सुरू झाल्याची टेस्ट करण्यासाठी खालील ओळ अनकमेंट करून रन करा:
-  trader.send_telegram_alert(
-      '🚀 *कमोडिटी अल्गो ट्रेडिंग बॉट यशस्वीरित्या सुरू झाला आहे!*'
-  )
+  # बॉट सुरू झाल्याचा टेस्ट मेसेज
+  trader.send_telegram_alert('🚀 *कमोडिटी अल्गो ट्रेडिंग बॉट यशस्वीरित्या सुरू झाला आहे!*')
 
-  print(
-      'Telegram Alert सह कमोडिटी अल्गो ट्रेडिंग सिस्टीम तयार आहे! (Capital:'
-      ' ₹15,000)'
-  )
+  # क्रूड ऑइल मिनीचे उदाहरण (टोकन नंबर टाका, उदा. क्रूड ऑइलचा टोकन)
+  trader.run_strategy('CRUDEOIL', '260937')
+  
