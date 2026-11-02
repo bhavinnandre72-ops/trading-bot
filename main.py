@@ -1,9 +1,10 @@
 import time
-requests
+import requests 
 from SmartApi import SmartConnect
 import pandas as pd
 import numpy as np
 import pyotp
+
 
 # ================= 1. कॉन्फिगरेशन आणि लॉगिन क्रेडेन्शियल्स =================
 API_KEY = "IanEntxyv"
