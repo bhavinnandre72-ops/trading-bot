@@ -1,22 +1,22 @@
 import time
-import requests
+requests
 from SmartApi import SmartConnect
 import pandas as pd
 import numpy as np
 import pyotp
 
-# ==================== 1. कॉन्फिगरेशन आणि तुमचे अचूक क्रेडेंशियल्स ====================
-API_KEY = "ianEntxyV"
-CLIENT_ID = "B253694"
+# ================= 1. कॉन्फिगरेशन आणि लॉगिन क्रेडेन्शियल्स =================
+API_KEY = "IanEntxyv"
+CLIENT_ID = "BZ33694"
 MPIN = "7172"
-TOTP_KEY = "D4YNATHBA3VFIW5C7YUQPJNVIE"
+TOTP_KEY = "D4YNATABAIVFIV5C7VJQPJNVIE"
 
-# टेलिग्राम बॉटची माहिती (नवीन टोकनसह)
-TELEGRAM_BOT_TOKEN = "8667131376:AAE_b_p7lhL0xuK_bkxYJOAPMUFR9CIBLX0"
-TELEGRAM_CHAT_ID = "1486399523"
+# टेलिग्राम बॉटची माहिती (नवीन टॉकेन्स)
+TELEGRAM_BOT_TOKEN = "6947131376:AAE_b_jfFjHLbkuK_bkxVJD4PM0FRFCIQLk4"
+TELEGRAM_CHAT_ID = "1460399523"
 
-# ऑब्जेक्ट इनिशिलायझेशन
-obj = SmartConnect(api_key=API_KEY)
+# ब्रोकर इनिशिलायझेशन
+obj = SmartConnect(api_Key=API_KEY)
 
 def send_telegram_alert(message):
     try:
@@ -32,9 +32,7 @@ def send_telegram_alert(message):
 
 def angel_one_login():
     try:
-        # सीक्रेट की पासून सध्याचा लाईव्ह ६ अंकी OTP जनरेट करणे
         current_totp = pyotp.TOTP(TOTP_KEY).now()
-        
         data = obj.generateSession(CLIENT_ID, MPIN, current_totp)
         
         if data and data.get("status"):
@@ -60,24 +58,28 @@ def get_live_market_data(exchange, symbol_token):
         print(f"LTP Fetch Error: {e}")
     return None
 
-# ==================== 2. पेपर ट्रेडिंग ऑटोमॅटिक लॉजिक ====================
+def get_atm_strike(spot_price, step=50):
+    """स्पॉट प्राईसवरून ATM स्ट्राइक प्राईस राऊंड ऑफ करण्यासाठी (उदा. Nifty साठी ५० च्या पटीत)"""
+    return round(spot_price / step) * step
+
+# ================= 2. पेपर ट्रेडिंग ऑटोमॅटिक लॉजिक =================
 def run_paper_trading_bot():
-    send_telegram_alert("🧪 *[TEST]* बॉट चालू होत आहे...")
-    
+    send_telegram_alert("🚀 *[TEST]* बॉट चालू होत आहे...")
+
     if not angel_one_login():
-        send_telegram_alert("⚠️ *[SYSTEM ERROR]* एंजेल वन लॉगिन फेल झाले आहे!")
+        send_telegram_alert("⚠️ *[SYSTEM ERROR]* एंजेल वन लॉगिन देश झाले नाही.")
         return
-    
+
     virtual_capital = 15000.0  # ₹१५,००० पेपर ट्रेडिंग कॅपिटल
-    send_telegram_alert(f"🚀 *[PAPER TRADING ONLINE]* Bhavin Bot सक्रिय!\n💰 व्हर्च्युअल कॅपिटल: ₹{virtual_capital}")
+    send_telegram_alert("✅ *[PAPER TRADING ONLINE]* Bhavin Bot सक्रिय झाला आहे.")
 
     indices = {
-        "NIFTY": {"exchange": "NSE", "token": "999926000", "support": 22800}
+        "NIFTY": {"exchange": "NSE", "token": "99926000", "support": 22000}
     }
-
+    
     trade_count = 0
-    max_trades = 3  # दिवसातून जास्तीत जास्त ३ ट्रेड
-
+    max_trades = 3  
+    
     while trade_count < max_trades:
         try:
             for index_name, data in indices.items():
@@ -86,83 +88,42 @@ def run_paper_trading_bot():
                     continue
 
                 support_level = data["support"]
-                print(f"Monitoring {index_name} | LTP: {current_spot_price} | Support: {support_level}")
+                print(f"Monitoring {index_name} | LTP: {current_spot_price}")
 
-                # सपोर्ट लेव्हलजवळ आल्यावर ट्रेड घेणे
+                # सपोर्ट लेव्हल जवळ आल्यावर ट्रेड
                 if abs(current_spot_price - support_level) <= 20:
                     trade_count += 1
                     entry_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                    
+                    # ATM स्ट्राइक प्राईस कॅल्क्युलेट करणे (निफ्टीसाठी ५० चा डिस्टन्स पकडत आहोत)
+                    atm_strike = get_atm_strike(current_spot_price, step=50)
+                    
+                    # समजा सपोर्ट जवळ आला तर आपण CE (Call) ची पोझिशन विचारत आहोत
+                    option_type = "CE" 
+                    
                     entry_price = current_spot_price
                     stop_loss = entry_price - 30
-                    
-                    # रिस्क-रिवार्ड रेशो (1:2 आणि 1:3 टार्गेट सेट करणे)
-                    risk = entry_price - stop_loss
-                    target_1_2 = entry_price + (risk * 2)  # 1:2 टार्गेट
-                    target_1_3 = entry_price + (risk * 3)  # 1:3 टार्गेट
-                    
-                    target = target_1_2  # मुख्य टार्गेट 1:2 नुसार
+                    target = entry_price + 90  # 1:3 रिस्क-टू-रिवाड नुसार
 
-                    # एन्ट्री मेसेज (वेळेसह)
-                    entry_msg = (
-                        f"🟢 *[PAPER TRADE ENTRY #{trade_count}]*\n"
-                        f"──────────────────\n"
-                        f"⏳ एन्ट्री वेळ: {entry_time}\n"
-                        f"📊 इंडेक्स: {index_name}\n"
-                        f"📍 एन्ट्री प्राईस: ₹{entry_price}\n"
-                        f"🛑 स्टॉपलॉस: ₹{stop_loss}\n"
-                        f"🎯 टार्गेट (1:2): ₹{target} | (1:3 साठी: ₹{target_1_3})\n"
-                        f"💰 उपलब्ध कॅपिटल: ₹{virtual_capital}"
+                    # टेलिग्रामवर ATM स्ट्राइक सहित अलर्ट पाठवणे
+                    alert_msg = (
+                        f"📊 *TRADE ENTRY DETECTED*\n"
+                        f"• Index: {index_name}\n"
+                        f"• Spot Price: {entry_price}\n"
+                        f"• **ATM Strike:** {atm_strike} {option_type}\n"
+                        f"• Entry Time: {entry_time}\n"
+                        f"• Stop Loss: {stop_loss}\n"
+                        f"• Target: {target}"
                     )
-                    send_telegram_alert(entry_msg)
+                    send_telegram_alert(alert_msg)
+                    
+                    print(f"Trade Taken: {atm_strike} {option_type} at Spot {entry_price}")
+                    time.sleep(60) # एका ट्रेड नंतर थोडा वेळ थांबण्यासाठी
 
-                    # ट्रेड लाईव्ह मॉनिटर करणे आणि एक्झिट वेळेची नोंद ठेवणे
-                    position_active = True
-                    while position_active:
-                        time.sleep(10)
-                        live_price = get_live_market_data(data["exchange"], data["token"])
-                        if not live_price:
-                            continue
-
-                        exit_time = time.strftime('%Y-%m-%d %H:%M:%S')
-
-                        # टार्गेट हिट झाल्यास
-                        if live_price >= target:
-                            profit = (target - entry_price) * 15  # १ लॉट (१५ क्वांटिटी)
-                            virtual_capital += profit
-                            exit_msg = (
-                                f"🎯 *[TARGET HIT #{trade_count}]*\n"
-                                f"──────────────────\n"
-                                f"⏳ एक्झिट वेळ: {exit_time}\n"
-                                f"✅ नफा: +₹{profit}\n"
-                                f"💰 एकूण कॅपिटल: ₹{virtual_capital}\n"
-                                f"🏁 पोझिशन यशस्वीरित्या क्लोज झाली."
-                            )
-                            send_telegram_alert(exit_msg)
-                            position_active = False
-
-                        # स्टॉपलॉस हिट झाल्यास
-                        elif live_price <= stop_loss:
-                            loss = (entry_price - stop_loss) * 15
-                            virtual_capital -= loss
-                            exit_msg = (
-                                f"🛑 *[STOPLOSS HIT #{trade_count}]*\n"
-                                f"──────────────────\n"
-                                f"⏳ एक्झिट वेळ: {exit_time}\n"
-                                f"❌ नुकसान: -₹{loss}\n"
-                                f"💰 एकूण कॅपिटल: ₹{virtual_capital}\n"
-                                f"🏁 पोझिशन क्लोज झाली."
-                            )
-                            send_telegram_alert(exit_msg)
-                            position_active = False
-
-                    time.sleep(300) # ट्रेडनंतर ५ मिनिटे विश्रांती
-
-            time.sleep(60)
+            time.sleep(10)
         except Exception as e:
-            print(f"Error: {e}")
-            time.sleep(30)
-
-    send_telegram_alert(f"🛑 *[TRADING FINISHED]* आजचे ३ ट्रेड्स पूर्ण झाले. अंतिम कॅपिटल: ₹{virtual_capital}")
+            print(f"Main Loop Error: {e}")
+            time.sleep(10)
 
 if __name__ == "__main__":
     run_paper_trading_bot()
