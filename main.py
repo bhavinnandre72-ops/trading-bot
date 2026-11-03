@@ -1,43 +1,42 @@
 import time
-import requests 
+import requests
 from SmartApi import SmartConnect
 import pandas as pd
 import numpy as np
 import pyotp
 
-
-# ================= 1. कॉन्फिगरेशन आणि लॉगिन क्रेडेन्शियल्स =================
-API_KEY = "IanEntxyv"
+# ================= 1. कॉन्फिगरेशन आणि लॉगिन सेटिंग्स =================
+API_KEY = "IanEntxv"
 CLIENT_ID = "BZ33694"
 MPIN = "7172"
-TOTP_KEY = "D4YNATABAIVFIV5C7VJQPJNVIE"
+TOTP_KEY = "D4VNATABAIVFIVGC7VJQPJWZIE"
 
-# टेलिग्राम बॉटची माहिती (नवीन टॉकेन्स)
-TELEGRAM_BOT_TOKEN = "6947131376:AAE_b_jfFjHLbkuK_bkxVJD4PM0FRFCIQLk4"
-TELEGRAM_CHAT_ID = "1460399523"
+# टेलिग्राम बॉटची माहिती (कॉन्टॅक्ट)
+TELEGRAM_BOT_TOKEN = "8947131376:AAE_0i)ffjHLDkUk_bkx5J84P8RFCIQ144"
+TELEGRAM_CHAT_ID = "1480169123"
 
-# ब्रोकर इनिशिलायझेशन
+# स्मार्ट एपीआय कनेक्शन
 obj = SmartConnect(api_Key=API_KEY)
 
 def send_telegram_alert(message):
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        uri = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
             "chat_id": TELEGRAM_CHAT_ID,
             "text": message,
             "parse_mode": "Markdown"
         }
-        requests.post(url, json=payload)
+        requests.post(uri, json=payload)
     except Exception as e:
         print(f"Telegram Error: {e}")
 
-def angel_one_login():
+def angel_smart_login():
     try:
         current_totp = pyotp.TOTP(TOTP_KEY).now()
         data = obj.generateSession(CLIENT_ID, MPIN, current_totp)
         
-        if data and data.get("status"):
-            print("एंजेल वन लॉगिन यशस्वी झाले!")
+        if data and data["status"]:
+            print("लॉगिन यशस्वी झाले.")
             return True
         else:
             error_msg = f"⚠️ *[LOGIN FAILED]* कारण: {data}"
@@ -53,34 +52,36 @@ def angel_one_login():
 def get_live_market_data(exchange, symbol_token):
     try:
         ltp_data = obj.ltpData(exchange, symbol_token, symbol_token)
-        if ltp_data and ltp_data.get("status"):
+        if ltp_data and ltp_data["status"]:
             return ltp_data["data"]["ltp"]
     except Exception as e:
         print(f"LTP Fetch Error: {e}")
     return None
 
 def get_atm_strike(spot_price, step=50):
-    """स्पॉट प्राईसवरून ATM स्ट्राइक प्राईस राऊंड ऑफ करण्यासाठी (उदा. Nifty साठी ५० च्या पटीत)"""
+    """ स्पॉट प्राईसवरून ATM स्ट्राइक शोधण्यासाठी (उदा. Nifty साठी स्टेप 50) """
     return round(spot_price / step) * step
 
-# ================= 2. पेपर ट्रेडिंग ऑटोमॅटिक लॉजिक =================
-def run_paper_trading_bot():
-    send_telegram_alert("🚀 *[TEST]* बॉट चालू होत आहे...")
-
-    if not angel_one_login():
-        send_telegram_alert("⚠️ *[SYSTEM ERROR]* एंजेल वन लॉगिन देश झाले नाही.")
+# ================= 2. नवीन प्राईस ॲक्शन स्ट्रॅटेजी बॉट लॉजिक =================
+def run_price_action_strategy():
+    send_telegram_alert("🚀 *[TEST]* बोट सुरू होत आहे...")
+    
+    if not angel_smart_login():
+        send_telegram_alert("⚠️ *[SYSTEM ERROR]* लॉगिन यशस्वी झाले नाही.")
         return
 
-    virtual_capital = 15000.0  # ₹१५,००० पेपर ट्रेडिंग कॅपिटल
-    send_telegram_alert("✅ *[PAPER TRADING ONLINE]* Bhavin Bot सक्रिय झाला आहे.")
+    virtual_capital = 20000.0  # फंड मर्यादा
+    send_telegram_alert("✅ *[PAPER TRADING ONLINE]* नवीन प्राईस ॲक्शन स्ट्रॅटेजी सक्रिय")
 
     indices = {
-        "NIFTY": {"exchange": "NSE", "token": "99926000", "support": 22000}
+        "NIFTY": {"exchange": "NSE", "token": "99926000", "step": 50},
+        "BANKNIFTY": {"exchange": "NSE", "token": "99926009", "step": 100},
+        "SENSEX": {"exchange": "BSE", "token": "99919000", "step": 100}
     }
-    
+
     trade_count = 0
-    max_trades = 3  
-    
+    max_trades = 2  # दिवसभरात 1 ते 2 एंट्री
+
     while trade_count < max_trades:
         try:
             for index_name, data in indices.items():
@@ -88,44 +89,52 @@ def run_paper_trading_bot():
                 if not current_spot_price:
                     continue
 
-                support_level = data["support"]
-                print(f"Monitoring {index_name} | LTP: {current_spot_price}")
+                # टीप: प्रत्यक्ष डेटा घेण्यासाठी ऐतिहासिक कॅण्डल (15 मिनिट व 5 मिनिट) API द्वारे फेच कराव्यात.
+                # येथे स्ट्रॅटेजीचे कोडिंग स्ट्रक्चर खालीलप्रमाणे लागू केले आहे:
 
-                # सपोर्ट लेव्हल जवळ आल्यावर ट्रेड
-                if abs(current_spot_price - support_level) <= 20:
-                    trade_count += 1
-                    entry_time = time.strftime('%Y-%m-%d %H:%M:%S')
-                    
-                    # ATM स्ट्राइक प्राईस कॅल्क्युलेट करणे (निफ्टीसाठी ५० चा डिस्टन्स पकडत आहोत)
-                    atm_strike = get_atm_strike(current_spot_price, step=50)
-                    
-                    # समजा सपोर्ट जवळ आला तर आपण CE (Call) ची पोझिशन विचारत आहोत
-                    option_type = "CE" 
-                    
-                    entry_price = current_spot_price
-                    stop_loss = entry_price - 30
-                    target = entry_price + 90  # 1:3 रिस्क-टू-रिवाड नुसार
+                # 1. पहिली 15 मिनिटांची कॅण्डल (9:15 ते 9:30) सोडून द्यायची.
+                # 2. त्यानंतर येणारी पहिली 'लाल' (Red) 15 मिनिटांची कॅण्डल शोधायची.
+                # 3. त्या लाल कॅण्डलचा High आणि Low मार्क करायचा.
+                
+                # समजा 5 मिनिटांच्या टाईमफ्रेमवर ब्रेकआऊट मिळाला:
+                breakout_side = None  # 'UP' किंवा 'DOWN' (तांत्रिक गणनेनुसार ठर Sound होईल)
+                current_candle_color = "GREEN"  # किंवा "RED"
+                implied_volatility = 18.0  # हा डेटा ऑप्शन चेनमधून घ्यावा (IV)
 
-                    # टेलिग्रामवर ATM स्ट्राइक सहित अलर्ट पाठवणे
-                    alert_msg = (
-                        f"📊 *TRADE ENTRY DETECTED*\n"
-                        f"• Index: {index_name}\n"
-                        f"• Spot Price: {entry_price}\n"
-                        f"• **ATM Strike:** {atm_strike} {option_type}\n"
-                        f"• Entry Time: {entry_time}\n"
-                        f"• Stop Loss: {stop_loss}\n"
-                        f"• Target: {target}"
-                    )
-                    send_telegram_alert(alert_msg)
-                    
-                    print(f"Trade Taken: {atm_strike} {option_type} at Spot {entry_price}")
-                    time.sleep(60) # एका ट्रेड नंतर थोडा वेळ थांबण्यासाठी
+                atm_strike = get_atm_strike(current_spot_price, data["step"])
 
-            time.sleep(10)
+                # अपसाईड ब्रेकआऊट नियम (Up Side Breakout)
+                if breakout_side == "UP" and current_candle_color == "GREEN":
+                    if implied_volatility >= 18:
+                        # Call Buy (IV 18 च्या वर)
+                        alert_msg = f"🟢 *[CALL BUY SIGNAL]*\nइंडेक्स: {index_name}\nस्ट्राइक: ATM {atm_strike} CE\nकारण: अपसाईड ब्रेकआऊट व IV >= 18\nटारगेट/एसएलयूपी: ₹1500 (1:1)"
+                        send_telegram_alert(alert_msg)
+                        trade_count += 1
+                    elif implied_volatility < 15:
+                        # Call Sell (IV 15 च्या खाली)
+                        alert_msg = f"🔴 *[CALL SELL SIGNAL]*\nइंडेक्स: {index_name}\nस्ट्राइक: ATM {atm_strike} CE\nकारण: अपसाईड ब्रेकआऊट व IV < 15\nटारगेट/एसएलयूपी: ₹1500 (1:1)"
+                        send_telegram_alert(alert_msg)
+                        trade_count += 1
+
+                # डाऊनसाईड ब्रेकआऊट नियम (Down Side Breakout)
+                elif breakout_side == "DOWN" and current_candle_color == "RED":
+                    if implied_volatility >= 18:
+                        # Put Buy (IV 18 च्या वर)
+                        alert_msg = f"🟢 *[PUT BUY SIGNAL]*\nइंडेक्स: {index_name}\nस्ट्राइक: ATM {atm_strike} PE\nकारण: डाऊनसाईड ब्रेकआऊट व IV >= 18\nटारगेट/एसएलयूपी: ₹1500 (1:1)"
+                        send_telegram_alert(alert_msg)
+                        trade_count += 1
+                    elif implied_volatility < 15:
+                        # Put Sell (IV 15 च्या खाली)
+                        alert_msg = f"🔴 *[PUT SELL SIGNAL]*\nइंडेक्स: {index_name}\nस्ट्राइक: ATM {atm_strike} PE\nकारण: डाऊनसाईड ब्रेकआऊट व IV < 15\nटारगेट/एसएलयूपी: ₹1500 (1:1)"
+                        send_telegram_alert(alert_msg)
+                        trade_count += 1
+
+            time.sleep(60) # दर 1 मिनिटाने मार्केट तपासेल
+
         except Exception as e:
-            print(f"Main Loop Error: {e}")
-            time.sleep(10)
+            print(f"Error in trading loop: {e}")
+            time.sleep(30)
 
 if __name__ == "__main__":
-    run_paper_trading_bot()
+    run_price_action_strategy()
     
