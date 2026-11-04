@@ -7,13 +7,13 @@ import pyotp
 
 # ================= 1. कॉन्फिगरेशन आणि लॉगिन क्रेडेन्शियल्स =================
 API_KEY = "iemEXsyV"
-CLIENT_ID = "BZ33694"
+CLIENT_ID = "B253694"
 MPIN = "7172"
 TOTP_KEY = "D4YNATABAIVFIV5C7VJQPJNVIE"
 
 # टेलिग्राम बॉटची माहिती
-TELEGRAM_BOT_TOKEN = "8947131376:AAE_b_jfFjHLbkuK_bkxVJD4PM0FRFCIQLk4"
-TELEGRAM_CHAT_ID = "1480169123"
+TELEGRAM_BOT_TOKEN = "8667131376:AAE_b_p7lhL0xuK_bkxYJOAPMUFR9CIBLX0"
+TELEGRAM_CHAT_ID = "1486399523"
 
 # स्मार्ट एपीआय कनेक्शन
 obj = SmartConnect(api_key=API_KEY)
