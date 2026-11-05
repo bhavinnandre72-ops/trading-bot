@@ -2,10 +2,10 @@ name: Tiranga Bot Daily Run
 
 on:
   schedule:
-    # १. सकाळी ९:३० वाजता (IST) बॉट ॲक्टिव्ह झाल्याचा मेसेज पाठवण्यासाठी (UTC सकाळी ४:०० वाजता)
+    # Sakaali 9:30 AM IST (UTC 4:00) - Bot Active / Status check
     - cron: '0 4 * * 1-5'
     
-    # २. दुपारी ३:०० वाजता (IST) तिरंगा पॅटर्न स्कॅन करून अलर्ट पाठवण्यासाठी (UTC सकाळी ९:३० वाजता)
+    # Dupari 3:00 PM IST (UTC 9:30) - Tiranga Pattern Live Scan Alert
     - cron: '30 9 * * 1-5'
 
   workflow_dispatch:
