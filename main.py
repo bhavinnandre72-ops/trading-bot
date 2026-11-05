@@ -49,6 +49,23 @@ def angel_smart_login():
         print(f"Login Exception: {e}")
         return False
 
+def get_live_market_data(exchange, symbol_token):
+    try:
+        ltp_data = obj.ltpData(exchange, symbol_token, symbol_token)
+        if ltp_data and ltp_data.get("status"):
+            return ltp_data["data"]["ltp"]
+    except Exception as e:
+        print(f"LTP Fetch Error: {e}")
+    return None
+
+def get_atm_strike(spot_price, index_name):
+    """स्पॉट प्राईसवरून ATM स्ट्राइक प्राईस काढण्यासाठी (निफ्टीसाठी ५० च्या पटीत, सेन्सेक्ससाठी १०० च्या पटीत)"""
+    if index_name == "NIFTY":
+        return round(spot_price / 50) * 50
+    elif index_name == "SENSEX":
+        return round(spot_price / 100) * 100
+    return spot_price
+
 def calculate_parabolic_sar(high, low, af=0.02, max_af=0.2):
     psar = low.copy()
     bullish = True
@@ -88,7 +105,7 @@ def check_strategy_signals(df):
     df['Volume_MA20'] = df['volume'].rolling(window=20).mean()
     df['SAR'] = calculate_parabolic_sar(df['high'], df['low'])
 
-    i = -2  # शेवटची पूर्ण झालेली कॅन्डल
+    i = -2  # शेवटची पूर्ण झालेली 1 मिनिटाची कॅन्डल
     
     close = df['close'].iloc[i]
     open_p = df['open'].iloc[i]
@@ -116,12 +133,12 @@ def check_strategy_signals(df):
 
     return None, 0, 0
 
-# ================= 2. लाईव्ह मॉनिटरिंग आणि अलर्ट लूप (Nifty & Sensex) =================
+# ================= 2. लाईव्ह मॉनिटरिंग आणि अलर्ट लूप =================
 def run_scalping_bot():
     if not angel_smart_login():
         return
 
-    send_telegram_alert("🚀 *Scalping Bot Started (1-Min Timeframe)*\n• Indices: Nifty & Sensex\n• MA 5/20, Parabolic SAR & Volume Filter Active.")
+    send_telegram_alert("🚀 *Scalping Bot Active (1-Min Timeframe)*\n• MA 5/20, Parabolic SAR & Volume Filter\n• ATM Strike & Telegram Alerts Enabled.")
 
     indices = {
         "NIFTY": {"exchange": "NSE", "token": "99926000"},
@@ -131,7 +148,27 @@ def run_scalping_bot():
     while True:
         try:
             for index_name, data in indices.items():
-                # इथे तुम्ही एंजेल वन API द्वारे डेटा मिळवून सिग्नल तपासून घेऊ शकता
+                # तुमच्या ब्रोकरच्या API द्वारे 1 मिनिटाचा कॅन्डल डेटा मिळवा:
+                # df = obj.getCandleData(data["exchange"], data["token"], ...)
+                
+                # सिग्नल तपासणी (डेटा जोडल्यानंतर ही ओळ अनकमेंट करा)
+                # signal, spot_price, sl_price = check_strategy_signals(df)
+                
+                # if signal:
+                #     atm_strike = get_atm_strike(spot_price, index_name)
+                #     option_type = "CE" if "BUY" in signal else "PE"
+                #     current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                #     
+                #     alert_text = (
+                #         f"📊 *STRATEGY SIGNAL DETECTED*\n"
+                #         f"• Index: {index_name}\n"
+                #         f"• Spot Price: {spot_price}\n"
+                #         f"• **ATM Strike:** {atm_strike} {option_type}\n"
+                #         f"• Action: {signal}\n"
+                #         f"• Stop Loss: {sl_price}\n"
+                #         f"• Time: {current_time}"
+                #     )
+                #     send_telegram_alert(alert_text)
                 pass
 
             time.sleep(60)  # प्रत्येक 1 मिनिटाच्या कॅन्डलसाठी प्रतीक्षा
@@ -142,3 +179,4 @@ def run_scalping_bot():
 
 if __name__ == "__main__":
     run_scalping_bot()
+    
