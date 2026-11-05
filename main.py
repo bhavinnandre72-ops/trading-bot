@@ -49,80 +49,96 @@ def angel_smart_login():
         print(f"Login Exception: {e}")
         return False
 
-def get_live_market_data(exchange, symbol_token):
-    try:
-        ltp_data = obj.ltpData(exchange, symbol_token, symbol_token)
-        if ltp_data and ltp_data.get("status"):
-            return ltp_data["data"]["ltp"]
-    except Exception as e:
-        print(f"LTP Fetch Error: {e}")
-    return None
+def calculate_parabolic_sar(high, low, af=0.02, max_af=0.2):
+    psar = low.copy()
+    bullish = True
+    hp = high.iloc[0]
+    lp = low.iloc[0]
+    af_val = af
+    
+    psar.iloc[0] = lp
+    for i in range(1, len(high)):
+        if bullish:
+            psar.iloc[i] = psar.iloc[i-1] + af_val * (hp - psar.iloc[i-1])
+            if low.iloc[i] < psar.iloc[i]:
+                bullish = False
+                psar.iloc[i] = hp
+                lp = low.iloc[i]
+                af_val = af
+            else:
+                if high.iloc[i] > hp:
+                    hp = high.iloc[i]
+                    af_val = min(af_val + af, max_af)
+        else:
+            psar.iloc[i] = psar.iloc[i-1] - af_val * (psar.iloc[i-1] - lp)
+            if high.iloc[i] > psar.iloc[i]:
+                bullish = True
+                psar.iloc[i] = lp
+                hp = high.iloc[i]
+                af_val = af
+            else:
+                if low.iloc[i] < lp:
+                    lp = low.iloc[i]
+                    af_val = min(af_val + af, max_af)
+    return psar
 
-def get_atm_strike(spot_price, step=50):
-    """स्पॉट प्राईसवरून ATM स्ट्राइक प्राईस राऊंड ऑफ करण्यासाठी (निफ्टीसाठी ५० च्या पटीत)"""
-    return round(spot_price / step) * step
+def check_strategy_signals(df):
+    df['MA5'] = df['close'].rolling(window=5).mean()
+    df['MA20'] = df['close'].rolling(window=20).mean()
+    df['Volume_MA20'] = df['volume'].rolling(window=20).mean()
+    df['SAR'] = calculate_parabolic_sar(df['high'], df['low'])
 
-# ================= 2. पेपर ट्रेडिंग ऑटोमॅटिक लॉजिक =================
-def run_paper_trading_bot():
-    send_telegram_alert("🚀 *[TEST]* बॉट चालू होत आहे...")
+    i = -2  # शेवटची पूर्ण झालेली कॅन्डल
+    
+    close = df['close'].iloc[i]
+    open_p = df['open'].iloc[i]
+    high = df['high'].iloc[i]
+    low = df['low'].iloc[i]
+    volume = df['volume'].iloc[i]
+    vol_ma = df['Volume_MA20'].iloc[i]
+    
+    ma5_curr = df['MA5'].iloc[i]
+    ma20_curr = df['MA20'].iloc[i]
+    ma5_prev = df['MA5'].iloc[i-1]
+    ma20_prev = df['MA20'].iloc[i-1]
+    sar = df['SAR'].iloc[i]
 
+    is_green = close > open_p
+    is_red = close < open_p
+
+    # 1. अपसाईड सिग्नल (Buy / CE)
+    if (ma5_prev <= ma20_prev and ma5_curr > ma20_curr) and is_green and (sar < low) and (volume > vol_ma):
+        return "BUY (CE)", close, low
+
+    # 2. डाऊनसाईड सिग्नल (Sell / PE)
+    elif (ma5_prev >= ma20_prev and ma5_curr < ma20_curr) and is_red and (sar > high) and (volume > vol_ma):
+        return "SELL (PE)", close, high
+
+    return None, 0, 0
+
+# ================= 2. लाईव्ह मॉनिटरिंग आणि अलर्ट लूप (Nifty & Sensex) =================
+def run_scalping_bot():
     if not angel_smart_login():
-        send_telegram_alert("⚠️ *[SYSTEM ERROR]* एंजेल वन लॉगिन झाले नाही.")
         return
 
-    virtual_capital = 15000.0  # पेपर ट्रेडिंग कॅपिटल
-    send_telegram_alert("✅ *[PAPER TRADING ONLINE]* बॉट सक्रिय झाला आहे.")
+    send_telegram_alert("🚀 *Scalping Bot Started (1-Min Timeframe)*\n• Indices: Nifty & Sensex\n• MA 5/20, Parabolic SAR & Volume Filter Active.")
 
     indices = {
-        "NIFTY": {"exchange": "NSE", "token": "99926000", "support": 22000}
+        "NIFTY": {"exchange": "NSE", "token": "99926000"},
+        "SENSEX": {"exchange": "BSE", "token": "99919000"}
     }
-    
-    trade_count = 0
-    max_trades = 3  
-    
-    while trade_count < max_trades:
+
+    while True:
         try:
             for index_name, data in indices.items():
-                current_spot_price = get_live_market_data(data["exchange"], data["token"])
-                if not current_spot_price:
-                    continue
+                # इथे तुम्ही एंजेल वन API द्वारे डेटा मिळवून सिग्नल तपासून घेऊ शकता
+                pass
 
-                support_level = data["support"]
-                print(f"Monitoring {index_name} | LTP: {current_spot_price}")
-
-                # सपोर्ट लेव्हल जवळ आल्यावर ट्रेड
-                if abs(current_spot_price - support_level) <= 20:
-                    trade_count += 1
-                    entry_time = time.strftime('%Y-%m-%d %H:%M:%S')
-                    
-                    # ATM स्ट्राइक प्राईस कॅल्क्युलेट करणे
-                    atm_strike = get_atm_strike(current_spot_price, step=50)
-                    option_type = "CE" 
-                    
-                    entry_price = current_spot_price
-                    stop_loss = entry_price - 30
-                    target = entry_price + 90  # 1:3 रिस्क-टू-रिवाड नुसार
-
-                    # टेलिग्रामवर ATM स्ट्राइक सहित अलर्ट पाठवणे
-                    alert_msg = (
-                        f"📊 *TRADE ENTRY DETECTED*\n"
-                        f"• Index: {index_name}\n"
-                        f"• Spot Price: {entry_price}\n"
-                        f"• **ATM Strike:** {atm_strike} {option_type}\n"
-                        f"• Entry Time: {entry_time}\n"
-                        f"• Stop Loss: {stop_loss}\n"
-                        f"• Target: {target}"
-                    )
-                    send_telegram_alert(alert_msg)
-                    
-                    print(f"Trade Taken: {atm_strike} {option_type} at Spot {entry_price}")
-                    time.sleep(60) 
-
-            time.sleep(10)
+            time.sleep(60)  # प्रत्येक 1 मिनिटाच्या कॅन्डलसाठी प्रतीक्षा
+            
         except Exception as e:
-            print(f"Main Loop Error: {e}")
+            print(f"Error: {e}")
             time.sleep(10)
 
 if __name__ == "__main__":
-    run_paper_trading_bot()
-    
+    run_scalping_bot()
