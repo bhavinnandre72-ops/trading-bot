@@ -2,11 +2,8 @@ name: Tiranga Bot Daily Run
 
 on:
   schedule:
-    # Sakaali 9:30 AM IST (UTC 4:00) - Bot Active / Status check
-    - cron: '0 4 * * 1-5'
-    
-    # Dupari 3:00 PM IST (UTC 9:30) - Tiranga Pattern Live Scan Alert
-    - cron: '30 9 * * 1-5'
+    - cron: '0 4 * * 1-5'    # सकाळी 9:30 AM IST (बॉट ॲक्टिव्ह मेसेजसाठी)
+    - cron: '30 9 * * 1-5'   # दुपारी 3:00 PM IST (तिरंगा पॅटर्न स्कॅनिंग आणि ॲलर्टसाठी)
 
   workflow_dispatch:
 
@@ -24,7 +21,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pandas yfinance
+          pip install requests pandas yfinance pytz
 
       - name: Run Tiranga Bot
         run: |
