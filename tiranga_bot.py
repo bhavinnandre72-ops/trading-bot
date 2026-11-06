@@ -20,22 +20,20 @@ def send_telegram_alert(message):
     return response.json()
 
 def main():
-    # Bharatiya vel (IST) kaadhne
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist)
     current_hour = now_ist.hour
-    current_minute = now_ist.minute
 
     print(f"Current IST Time: {now_ist.strftime('%H:%M:%S')}")
 
-    # Jara vel sakalchi asel (9:00 te 10:00 darmiyan), terha fat Active message pathvane
+    # सकाळी ९ ते ११ दरम्यान फक्त 'बॉट ॲक्टिव्ह' असल्याचा मेसेज पाठवेल
     if 9 <= current_hour < 11:
-        send_telegram_alert("🚀 *Tiranga Live Scanner:* Sakalchi vel zali ahe, bot market monitoring sathi active zhala ahe!")
+        send_telegram_alert("🚀 *Tiranga Live Scanner:* मार्केट सुरू झाले आहे, बॉट लाईव्ह मॉनिटरिंगसाठी ॲक्टिव्ह झाला आहे!")
         print("Morning active message sent.")
         return
 
-    # Duparchi vel (3:00 PM chya aaspas), terha purna 200 stocks scan karun Tiranga Pattern check karne
-    print("Duparchi vel zali ahe, Tiranga Strategy scanning suru ahe...")
+    # दुपारी ३ वाजता किंवा मार्केट बंद होण्याच्या वेळेस संपूर्ण २०० स्टॉक्स स्कॅन करून तिरंगा पॅटर्न तपासणे
+    print("दुपारचे स्कॅनिंग सुरू आहे...")
     
     alert_count = 0
     for stock in stocks_list:
@@ -82,9 +80,10 @@ def main():
             print(f"Error processing {stock}: {e}")
 
     if alert_count == 0:
-        send_telegram_alert("ℹ️ *Market Scan Update:* Aaj duparchi scan madhe kontyahi stock var tiranga pattern match zala nahi.")
+        send_telegram_alert("ℹ️ *Market Scan Update:* आजच्या स्कॅनिंगमध्ये कोणत्याही स्टॉकवर तिरंगा पॅटर्न मॅच झालेला नाही.")
     
-    print(f"Scanning purna zali. Ekun alerts: {alert_count}")
+    print(f"स्कॅनिंग पूर्ण झाले. एकूण ॲलर्ट्स: {alert_count}")
 
 if __name__ == "__main__":
     main()
+    
