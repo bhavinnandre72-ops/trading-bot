@@ -23,17 +23,18 @@ def main():
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist)
     current_hour = now_ist.hour
+    current_minute = now_ist.minute
 
     print(f"Current IST Time: {now_ist.strftime('%H:%M:%S')}")
 
-    # सकाळी ९ ते ११ दरम्यान फक्त 'बॉट ॲक्टिव्ह' असल्याचा मेसेज पाठवेल
-    if 9 <= current_hour < 11:
-        send_telegram_alert("🚀 *Tiranga Live Scanner:* मार्केट सुरू झाले आहे, बॉट लाईव्ह मॉनिटरिंगसाठी ॲक्टिव्ह झाला आहे!")
+    # १. सकाळी 9 ते 10 च्या दरम्यान असल्यास फक्त ॲक्टिव्ह मेसेज पाठवणे
+    if current_hour == 9 or (current_hour == 10 and current_minute < 30):
+        send_telegram_alert("🚀 *Tiranga Live Scanner:* मार्केट सुरू झाले आहे, बॉट मॉर्निंग मॉनिटरिंगसाठी ॲक्टिव्ह झाला आहे!")
         print("Morning active message sent.")
         return
 
-    # दुपारी ३ वाजता किंवा मार्केट बंद होण्याच्या वेळेस संपूर्ण २०० स्टॉक्स स्कॅन करून तिरंगा पॅटर्न तपासणे
-    print("दुपारचे स्कॅनिंग सुरू आहे...")
+    # २. दुपारी 3 वाजता (किंवा 3:00 ते 4:00 दरम्यान) असल्यास थेट २०० स्टॉक्सचे लाईव्ह स्कॅनिंग करणे
+    print("दुपारचे लाईव्ह तिरंगा स्कॅनिंग सुरू होत आहे...")
     
     alert_count = 0
     for stock in stocks_list:
@@ -80,10 +81,10 @@ def main():
             print(f"Error processing {stock}: {e}")
 
     if alert_count == 0:
-        send_telegram_alert("ℹ️ *Market Scan Update:* आजच्या स्कॅनिंगमध्ये कोणत्याही स्टॉकवर तिरंगा पॅटर्न मॅच झालेला नाही.")
+        send_telegram_alert("ℹ️ *Market Scan Update:* आज दुपारी ३ वाजताच्या स्कॅनिंगमध्ये कोणत्याही स्टॉकवर तिरंगा पॅटर्न मॅच झालेला नाही.")
     
     print(f"स्कॅनिंग पूर्ण झाले. एकूण ॲलर्ट्स: {alert_count}")
 
 if __name__ == "__main__":
     main()
-    
+                
