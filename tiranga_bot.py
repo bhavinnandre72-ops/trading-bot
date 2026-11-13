@@ -27,13 +27,13 @@ def main():
 
     print(f"Current IST Time: {now_ist.strftime('%H:%M:%S')}")
 
-    # १. सकाळी 9 ते 10 च्या दरम्यान असल्यास फक्त ॲक्टिव्ह मेसेज पाठवणे
-    if current_hour == 9 or (current_hour == 10 and current_minute < 30):
+    # १. जर वेळ सकाळी 9:00 ते 10:00 च्या दरम्यान असेल तरच 'बॉट ॲक्टिव्ह' मेसेज पाठवेल
+    if current_hour == 9 or (current_hour == 10 and current_minute <= 15):
         send_telegram_alert("🚀 *Tiranga Live Scanner:* मार्केट सुरू झाले आहे, बॉट मॉर्निंग मॉनिटरिंगसाठी ॲक्टिव्ह झाला आहे!")
         print("Morning active message sent.")
         return
 
-    # २. दुपारी 3 वाजता (किंवा 3:00 ते 4:00 दरम्यान) असल्यास थेट २०० स्टॉक्सचे लाईव्ह स्कॅनिंग करणे
+    # २. इतर वेळी (विशेषतः दुपारी 3:00 वाजता) थेट 200 स्टॉक्सचे लाईव्ह स्कॅनिंग करून 3:10 च्या आत ॲलर्ट पाठवेल
     print("दुपारचे लाईव्ह तिरंगा स्कॅनिंग सुरू होत आहे...")
     
     alert_count = 0
@@ -87,4 +87,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-                
+    
