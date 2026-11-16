@@ -2,11 +2,11 @@ name: Tiranga Bot Daily Run
 
 on:
   schedule:
-    # सकाळी 9:30 AM IST (UTC सकाळी 4:00)
-    - cron: '0 4 * * 1-5'
+    # सकाळी 9:30 AM IST साठी
+    - cron: '30 3 * * 1-5'
     
-    # दुपारी 3:00 PM IST (UTC सकाळी 9:30) - हा वेळेवर स्कॅनिंग करेल
-    - cron: '30 9 * * 1-5'
+    # दुपारी 3:00 वाजता अचूक ॲलर्ट मिळण्यासाठी वेळ थोडी आधी (IST दुपारी 2:25 म्हणजेच UTC 8:55) सेट केली आहे
+    - cron: '55 8 * * 1-5'
 
   workflow_dispatch:
 
@@ -29,4 +29,3 @@ jobs:
       - name: Run Tiranga Bot
         run: |
           python tiranga_bot.py
-          
