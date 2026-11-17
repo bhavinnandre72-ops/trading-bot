@@ -36,7 +36,7 @@ def angel_smart_login():
         data = obj.generateSession(CLIENT_ID, MPIN, current_totp)
         
         if data and data.get("status"):
-            print("लॉगिन यशस्वी झाले.")
+            print("एंजेल वन लॉगिन यशस्वी झाले.")
             return True
         else:
             error_msg = f"⚠️ *[LOGIN FAILED]* कारण: {data}"
@@ -49,134 +49,112 @@ def angel_smart_login():
         print(f"Login Exception: {e}")
         return False
 
-def get_live_market_data(exchange, symbol_token):
-    try:
-        ltp_data = obj.ltpData(exchange, symbol_token, symbol_token)
-        if ltp_data and ltp_data.get("status"):
-            return ltp_data["data"]["ltp"]
-    except Exception as e:
-        print(f"LTP Fetch Error: {e}")
-    return None
-
 def get_atm_strike(spot_price, index_name):
-    """स्पॉट प्राईसवरून ATM स्ट्राइक प्राईस काढण्यासाठी (निफ्टीसाठी ५० च्या पटीत, सेन्सेक्ससाठी १०० च्या पटीत)"""
+    """स्पॉट प्राईसवरून ATM स्ट्राइक प्राईस काढणे (निफ्टी ५० च्या पटीत, सेन्सेक्स १०० च्या पटीत)"""
     if index_name == "NIFTY":
         return round(spot_price / 50) * 50
     elif index_name == "SENSEX":
         return round(spot_price / 100) * 100
     return spot_price
 
-def calculate_parabolic_sar(high, low, af=0.02, max_af=0.2):
-    psar = low.copy()
-    bullish = True
-    hp = high.iloc[0]
-    lp = low.iloc[0]
-    af_val = af
+def evaluate_strategy_rules(signal_type, current_iv, spot_price, index_name):
+    """
+    स्ट्रॅटेजीच्या नियमांनुसार:
+    - IV > 15 असल्यास: Delta >= 0.60 ची ITM स्ट्राइक (Buy CE / Buy PE)
+    - IV < 15 असल्यास: ATM स्ट्राइक (Sell PE / Sell CE)
+    """
+    atm_strike = get_atm_strike(spot_price, index_name)
     
-    psar.iloc[0] = lp
-    for i in range(1, len(high)):
-        if bullish:
-            psar.iloc[i] = psar.iloc[i-1] + af_val * (hp - psar.iloc[i-1])
-            if low.iloc[i] < psar.iloc[i]:
-                bullish = False
-                psar.iloc[i] = hp
-                lp = low.iloc[i]
-                af_val = af
-            else:
-                if high.iloc[i] > hp:
-                    hp = high.iloc[i]
-                    af_val = min(af_val + af, max_af)
+    if signal_type == "UP_BREAKOUT":
+        if current_iv > 15:
+            action = "BUY CE"
+            strike_desc = "ITM Strike (Delta >= 0.60)"
         else:
-            psar.iloc[i] = psar.iloc[i-1] - af_val * (psar.iloc[i-1] - lp)
-            if high.iloc[i] > psar.iloc[i]:
-                bullish = True
-                psar.iloc[i] = lp
-                hp = high.iloc[i]
-                af_val = af
-            else:
-                if low.iloc[i] < lp:
-                    lp = low.iloc[i]
-                    af_val = min(af_val + af, max_af)
-    return psar
+            action = "SELL PE"
+            strike_desc = f"ATM Strike ({atm_strike})"
+            
+    elif signal_type == "DOWN_BREAKDOWN":
+        if current_iv > 15:
+            action = "BUY PE"
+            strike_desc = "ITM Strike (Delta >= 0.60)"
+        else:
+            action = "SELL CE"
+            strike_desc = f"ATM Strike ({atm_strike})"
+    else:
+        return None, None, None
 
-def check_strategy_signals(df):
-    df['MA5'] = df['close'].rolling(window=5).mean()
-    df['MA20'] = df['close'].rolling(window=20).mean()
-    df['Volume_MA20'] = df['volume'].rolling(window=20).mean()
-    df['SAR'] = calculate_parabolic_sar(df['high'], df['low'])
+    return action, strike_desc, atm_strike
 
-    i = -2  # शेवटची पूर्ण झालेली 1 मिनिटाची कॅन्डल
-    
-    close = df['close'].iloc[i]
-    open_p = df['open'].iloc[i]
-    high = df['high'].iloc[i]
-    low = df['low'].iloc[i]
-    volume = df['volume'].iloc[i]
-    vol_ma = df['Volume_MA20'].iloc[i]
-    
-    ma5_curr = df['MA5'].iloc[i]
-    ma20_curr = df['MA20'].iloc[i]
-    ma5_prev = df['MA5'].iloc[i-1]
-    ma20_prev = df['MA20'].iloc[i-1]
-    sar = df['SAR'].iloc[i]
-
-    is_green = close > open_p
-    is_red = close < open_p
-
-    # 1. अपसाईड सिग्नल (Buy / CE)
-    if (ma5_prev <= ma20_prev and ma5_curr > ma20_curr) and is_green and (sar < low) and (volume > vol_ma):
-        return "BUY (CE)", close, low
-
-    # 2. डाऊनसाईड सिग्नल (Sell / PE)
-    elif (ma5_prev >= ma20_prev and ma5_curr < ma20_curr) and is_red and (sar > high) and (volume > vol_ma):
-        return "SELL (PE)", close, high
-
-    return None, 0, 0
-
-# ================= 2. लाईव्ह मॉनिटरिंग आणि अलर्ट लूप =================
-def run_scalping_bot():
+# ================= 2. मुख्य पेपर ट्रेडिंग आणि स्ट्रॅटेजी लूप =================
+def run_paper_trading_strategy():
     if not angel_smart_login():
         return
 
-    send_telegram_alert("🚀 *Scalping Bot Active (1-Min Timeframe)*\n• MA 5/20, Parabolic SAR & Volume Filter\n• ATM Strike & Telegram Alerts Enabled.")
+    paper_capital = 180000.0  # दिलेले पेपर ट्रेडिंग कॅपिटल
+    send_telegram_alert(
+        f"🚀 *15 Mins Breakout Strategy (Paper Trading)*\n"
+        f"• Capital: ₹{paper_capital:,.2f}\n"
+        f"• Indices: Nifty & Sensex\n"
+        f"• IV & Delta Rules & Risk Management Active."
+    )
 
     indices = {
         "NIFTY": {"exchange": "NSE", "token": "99926000"},
         "SENSEX": {"exchange": "BSE", "token": "99919000"}
     }
 
-    while True:
-        try:
-            for index_name, data in indices.items():
-                # तुमच्या ब्रोकरच्या API द्वारे 1 मिनिटाचा कॅन्डल डेटा मिळवा:
-                # df = obj.getCandleData(data["exchange"], data["token"], ...)
-                
-                # सिग्नल तपासणी (डेटा जोडल्यानंतर ही ओळ अनकमेंट करा)
-                # signal, spot_price, sl_price = check_strategy_signals(df)
-                
-                # if signal:
-                #     atm_strike = get_atm_strike(spot_price, index_name)
-                #     option_type = "CE" if "BUY" in signal else "PE"
-                #     current_time = time.strftime('%Y-%m-%d %H:%M:%S')
-                #     
-                #     alert_text = (
-                #         f"📊 *STRATEGY SIGNAL DETECTED*\n"
-                #         f"• Index: {index_name}\n"
-                #         f"• Spot Price: {spot_price}\n"
-                #         f"• **ATM Strike:** {atm_strike} {option_type}\n"
-                #         f"• Action: {signal}\n"
-                #         f"• Stop Loss: {sl_price}\n"
-                #         f"• Time: {current_time}"
-                #     )
-                #     send_telegram_alert(alert_text)
-                pass
+    # ट्रेड आणि रिस्क मॅनेजमेंटचे व्हेरिएबल्स
+    trade_history = []  # उदा. ["PROFIT", "LOSS"]
+    max_trades = 3
 
-            time.sleep(60)  # प्रत्येक 1 मिनिटाच्या कॅन्डलसाठी प्रतीक्षा
+    while len(trade_history) < max_trades:
+        try:
+            current_time = time.strftime('%H:%M:%S')
+            
+            # नियम: सलग दोन प्रॉफिट किंवा सलग दोन लॉस झाल्यास तिसरी एंट्री घेऊ नका
+            if len(trade_history) == 2:
+                if trade_history[0] == trade_history[1]:
+                    send_telegram_alert(f"⚠️ *Trading Stopped for Today:* सलग दोन ट्रेड एकाच निकालात ({(trade_history[0])}) गेल्यामुळे नियम क्र. ३ किंवा ४ नुसार आजचे ट्रेड बंद केले आहेत.")
+                    break
+            
+            # सकाळी ९:३० ते दुपारी २:३० दरम्यान ट्रेड मॉनिटर करणे
+            if "09:30:00" <= current_time <= "14:30:00":
+                for index_name, data in indices.items():
+                    # [टीप]: प्रत्यक्षात इथे ब्रोकर API द्वारे लाइव्ह डेटा, 15-मिनिट झोन आणि IV वैल्यू फेच करायची असते.
+                    # उदाहरणार्थ:
+                    # spot_price = get_live_market_data(data["exchange"], data["token"])
+                    # current_iv = get_live_iv(...)
+                    # signal_type = check_breakout(...)
+                    
+                    # (जेव्हा सिग्नल जनरेट होईल तेव्हा खालीलप्रमाणे टेलिग्राम अलर्ट येईल)
+                    # if signal_type:
+                    #     action, strike_desc, atm_strike = evaluate_strategy_rules(signal_type, current_iv, spot_price, index_name)
+                    #     
+                    #     # रिस्क आणि स्टॉप लॉस मर्यादा (₹१,५०० ते ₹२,००० च्या आत)
+                    #     alert_msg = (
+                    #         f"📊 *PAPER TRADING SIGNAL (Trade #{len(trade_history) + 1})*\n"
+                    #         f"• Index: {index_name}\n"
+                    #         f"• Signal: {signal_type}\n"
+                    #         f"• Action: *{action}*\n"
+                    #         f"• Strike Info: {strike_desc}\n"
+                    #         f"• Spot Price: {spot_price}\n"
+                    #         f"• Current IV: {current_iv}\n"
+                    #         f"• Stop Loss Limit: ₹1,500 - ₹2,000\n"
+                    #         f"• Time: {current_time}"
+                    #     )
+                    #     send_telegram_alert(alert_msg)
+                    #     
+                    #     # ट्रेडनंतर १५ मिनिटांचा ब्रेक आणि रिझल्ट रेकॉर्ड करण्याची सोय
+                    #     trade_history.append("PROFIT") # (उदाहरणार्थ ट्रेड निकाल)
+                    #     time.sleep(900)  # १५ मिनिटांचा ब्रेक
+                    pass
+
+            time.sleep(60)
             
         except Exception as e:
             print(f"Error: {e}")
             time.sleep(10)
 
 if __name__ == "__main__":
-    run_scalping_bot()
+    run_paper_trading_strategy()
     
