@@ -1,3 +1,4 @@
+import time
 import requests
 import pandas as pd
 import yfinance as yf
@@ -5,7 +6,6 @@ from datetime import datetime
 import pytz
 from stocks_200 import stocks_list
 
-# Telegram Bot Credentials
 TOKEN = "8731401312:AAEQwWyzIDfGXUQeT3f0ZrKkkabi98xOvrQ"
 CHAT_ID = "1486399523"
 
@@ -16,27 +16,16 @@ def send_telegram_alert(message):
         "text": message,
         "parse_mode": "Markdown"
     }
-    response = requests.post(url, json=payload)
-    return response.json()
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        return response.json()
+    except Exception as e:
+        print(f"Telegram Error: {e}")
 
-def main():
-    ist = pytz.timezone('Asia/Kolkata')
-    now_ist = datetime.now(ist)
-    current_hour = now_ist.hour
-    current_minute = now_ist.minute
-
-    print(f"Current IST Time: {now_ist.strftime('%H:%M:%S')}")
-
-    # १. जर वेळ सकाळी 9:00 ते 10:00 च्या दरम्यान असेल तरच 'बॉट ॲक्टिव्ह' मेसेज पाठवेल
-    if current_hour == 9 or (current_hour == 10 and current_minute <= 15):
-        send_telegram_alert("🚀 *Tiranga Live Scanner:* मार्केट सुरू झाले आहे, बॉट मॉर्निंग मॉनिटरिंगसाठी ॲक्टिव्ह झाला आहे!")
-        print("Morning active message sent.")
-        return
-
-    # २. इतर वेळी (विशेषतः दुपारी 3:00 वाजता) थेट 200 स्टॉक्सचे लाईव्ह स्कॅनिंग करून 3:10 च्या आत ॲलर्ट पाठवेल
-    print("दुपारचे लाईव्ह तिरंगा स्कॅनिंग सुरू होत आहे...")
-    
+def scan_tiranga_strategy():
+    print("३:०० वाजताचे तिरंगा स्कॅनिंग सुरू झाले...")
     alert_count = 0
+
     for stock in stocks_list:
         try:
             ticker = stock + ".NS"
@@ -48,7 +37,6 @@ def main():
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
-            # EMA Calculation
             df['EMA_5'] = df['Close'].ewm(span=5, adjust=False).mean()
             df['EMA_13'] = df['Close'].ewm(span=13, adjust=False).mean()
             df['EMA_26'] = df['Close'].ewm(span=26, adjust=False).mean()
@@ -56,7 +44,6 @@ def main():
             prev = df.iloc[-2]
             curr = df.iloc[-1]
 
-            # Tiranga Pattern Crossover (EMA 5 > EMA 13 > EMA 26)
             is_crossover = (prev['EMA_5'] <= prev['EMA_13']) and (curr['EMA_5'] > curr['EMA_13'])
             is_uptrend_aligned = curr['EMA_13'] > curr['EMA_26']
 
@@ -73,7 +60,6 @@ def main():
                     f"💰 *Close Price:* `{close_price:.2f}`\n"
                     f"🛑 *Stop Loss (Low):* `{candle_low:.2f}`"
                 )
-
                 send_telegram_alert(msg)
                 alert_count += 1
 
@@ -82,9 +68,35 @@ def main():
 
     if alert_count == 0:
         send_telegram_alert("ℹ️ *Market Scan Update:* आज दुपारी ३ वाजताच्या स्कॅनिंगमध्ये कोणत्याही स्टॉकवर तिरंगा पॅटर्न मॅच झालेला नाही.")
-    
-    print(f"स्कॅनिंग पूर्ण झाले. एकूण ॲलर्ट्स: {alert_count}")
+
+    print(f"स्कॅनिंग पूर्ण झाले. एकूण अलर्ट्स: {alert_count}")
+
+def run_bot_loop():
+    ist = pytz.timezone('Asia/Kolkata')
+    morning_sent_date = None
+    afternoon_sent_date = None
+
+    send_telegram_alert("🤖 *Tiranga Bot Started:* बॉट मॉनिटरिंगसाठी सुरू झाला आहे.")
+
+    while True:
+        now = datetime.now(ist)
+        today_str = now.strftime("%Y-%m-%d")
+        weekday = now.weekday()  # 0 = Monday ... 4 = Friday
+
+        # फक्त सोमवार ते शुक्रवार
+        if weekday < 5:
+            # सकाळी 9:30 AM ला ॲक्टिव्ह मेसेज
+            if now.hour == 9 and now.minute == 30 and morning_sent_date != today_str:
+                send_telegram_alert("🚀 *Tiranga Live Scanner:* मार्केट सुरू झाले आहे, बॉट ॲक्टिव्ह आहे!")
+                morning_sent_date = today_str
+
+            # दुपारी 3:00 PM ला तिरंगा स्कॅनिंग आणि अलर्ट
+            if now.hour == 15 and now.minute == 0 and afternoon_sent_date != today_str:
+                scan_tiranga_strategy()
+                afternoon_sent_date = today_str
+
+        time.sleep(20)  # दर २० सेकंदांनी वेळ तपासेल
 
 if __name__ == "__main__":
-    main()
+    run_bot_loop()
     
