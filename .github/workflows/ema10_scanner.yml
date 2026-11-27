@@ -1,0 +1,25 @@
+name: 10 EMA Breakout Scanner
+
+on:
+  schedule:
+    # UTC वेळ: 03:45 ते 10:05 म्हणजे IST सकाळी 9:15 ते दुपारी 3:35 (सोमवार ते शुक्रवार, दर 5 मिनिटांनी)
+    - cron: "*/5 3-10 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  run-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install smartapi-python pyotp pandas requests
+
+      - name: Run 10 EMA script
+        run: python EMA10.py
