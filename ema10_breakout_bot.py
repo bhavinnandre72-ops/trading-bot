@@ -1,4 +1,3 @@
-import os
 import time
 from datetime import datetime, timedelta
 import requests
@@ -6,16 +5,17 @@ import pandas as pd
 import pyotp
 from SmartApi import SmartConnect
 
-# --- Configuration (Environment Variables वापरा) ---
-API_KEY = os.getenv("ANGEL_API_KEY", "YOUR_API_KEY")
-CLIENT_ID = os.getenv("ANGEL_CLIENT_ID", "YOUR_CLIENT_ID")
-MPIN = os.getenv("ANGEL_MPIN", "YOUR_MPIN")
-TOTP_KEY = os.getenv("ANGEL_TOTP_KEY", "YOUR_TOTP_KEY")
+# --- Angel One API आणि Telegram बॉटची माहिती ---
+API_KEY = "iemEXsyV"
+CLIENT_ID = "B253694"
+MPIN = "7172"
+TOTP_KEY = "D4YNATHBA3VFIW5C7YUQPJNVIE"
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_TELEGRAM_CHAT_ID")
+# टेलिग्राम बॉटची माहिती
+TELEGRAM_BOT_TOKEN = "9128543562:AAG9vfmFC9K2eqZtJ51XCeMaGi6A68GmWpk"
+TELEGRAM_CHAT_ID = "1486399523"
 
-# मॉनिटर करायचे सिम्बॉल्स (उदा. NSE Equities / Indices साठी Symbol Token तपासा)
+# मॉनिटर करायचे सिम्बॉल्स (इथे तुम्हाला हवे असलेले Stocks/Index चे Symbol Token जोडा; ETF टाळा)
 WATCHLIST = [
     {"name": "NIFTY 50", "exchange": "NSE", "symboltoken": "99926000"},
     # {"name": "RELIANCE", "exchange": "NSE", "symboltoken": "2885"},
@@ -23,11 +23,6 @@ WATCHLIST = [
 
 
 def send_telegram_alert(message: str) -> None:
-    if "YOUR_" in TELEGRAM_BOT_TOKEN or "YOUR_" in TELEGRAM_CHAT_ID:
-        print("[WARN] Telegram credentials set केलेले नाहीत. मेसेज कन्सोलवर प्रिंट करत आहे:")
-        print(message)
-        return
-
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -37,6 +32,7 @@ def send_telegram_alert(message: str) -> None:
     try:
         resp = requests.post(url, json=payload, timeout=10)
         resp.raise_for_status()
+        print("[OK] Telegram अलर्ट पाठवला गेला.")
     except Exception as e:
         print(f"[ERROR] Telegram मेसेज पाठवताना अडचण: {e}")
 
@@ -47,6 +43,7 @@ def connect_angel_one() -> SmartConnect:
     data = smart_api.generateSession(CLIENT_ID, MPIN, totp)
     if not data.get("status"):
         raise RuntimeError(f"Angel One Login अयशस्वी: {data}")
+    print("[OK] Angel One शी यशस्वी कनेक्ट झाले.")
     return smart_api
 
 
@@ -75,7 +72,6 @@ def fetch_5m_candles(smart_api: SmartConnect, exchange: str, token: str, days_ba
 
 
 def is_green_non_doji(row: pd.Series) -> bool:
-    # Doji टाळण्यासाठी बॉडी साइज किमान लहान थ्रेशोल्डपेक्षा मोठी असावी
     body = row["close"] - row["open"]
     rng = max(row["high"] - row["low"], 1e-9)
     return body > 0 and (body / rng) >= 0.15
@@ -88,20 +84,16 @@ def is_red_non_doji(row: pd.Series) -> bool:
 
 
 def detect_setups_for_date(df: pd.DataFrame, target_date: datetime.date) -> list[dict]:
-    """
-    दिलेल्या तारखेतील (उदा. आजच्या) 5-मिनिटांच्या कॅण्डल्सवर सेटअप व ब्रेकआउट तपासतो.
-    """
     signals = []
     if len(df) < 15:
         return signals
 
-    # इंडेक्स 4 पासून तपासू जेणेकरून मागील 3 soldiers + 1 pullback candle + 1 breakout/current candle उपलब्ध असेल
     for i in range(4, len(df)):
         row_curr = df.iloc[i]
         if row_curr["timestamp"].date() != target_date:
             continue
 
-        # --- BUY SETUP: i-4, i-3, i-2 हे 3 White Soldiers; i-1 ही Red Pullback Candle; i वर High ब्रेक ---
+        # --- BUY SETUP: 3 White Soldiers + 1 Red Candle (Close > 10 EMA) + High Break ---
         s1, s2, s3 = df.iloc[i - 4], df.iloc[i - 3], df.iloc[i - 2]
         pb_red = df.iloc[i - 1]
 
@@ -132,7 +124,7 @@ def detect_setups_for_date(df: pd.DataFrame, target_date: datetime.date) -> list
                 "t_1_3": round(entry_price + 3 * risk, 2),
             })
 
-        # --- SELL SETUP: i-4, i-3, i-2 हे 3 Black Soldiers; i-1 ही Green Pullback Candle; i वर Low ब्रेक ---
+        # --- SELL SETUP: 3 Black Soldiers + 1 Green Candle (Close < 10 EMA) + Low Break ---
         b1, b2, b3 = df.iloc[i - 4], df.iloc[i - 3], df.iloc[i - 2]
         pb_green = df.iloc[i - 1]
 
@@ -163,7 +155,6 @@ def detect_setups_for_date(df: pd.DataFrame, target_date: datetime.date) -> list
                 "t_1_3": round(entry_price - 3 * risk, 2),
             })
 
-    # दिवसातील कमाल 3 एन्ट्रीज मर्यादित ठेवणे
     return signals[:3]
 
 
@@ -176,9 +167,13 @@ def run_scanner(live_loop: bool = False) -> None:
         for item in WATCHLIST:
             df = fetch_5m_candles(smart_api, item["exchange"], item["symboltoken"], days_back=3)
             if df.empty:
+                print(f"[INFO] {item['name']} साठी कॅण्डल डेटा मिळाला नाही.")
                 continue
 
             day_signals = detect_setups_for_date(df, today)
+            if not day_signals and not live_loop:
+                print(f"[INFO] {item['name']} साठी आज ({today}) कोणतीही एन्ट्री तयार झालेली नाही.")
+
             for idx, sig in enumerate(day_signals, start=1):
                 unique_key = f"{item['name']}_{sig['time']}_{sig['side']}"
                 if unique_key in sent_keys:
@@ -203,6 +198,5 @@ def run_scanner(live_loop: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    # आजच्या (किंवा शेवटच्या ट्रेडिंग दिवसाच्या) कॅण्डल्स तपासून अलर्ट पाठवण्यासाठी:
+    # आजच्या कॅण्डल्स तपासून अलर्ट पाठवण्यासाठी:
     run_scanner(live_loop=False)
-  
