@@ -18,7 +18,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install smartapi-python logzero pyotp pandas requests
+        run: pip install smartapi-python logzero websocket-client pyotp pandas requests
 
       - name: Run 10 EMA script
         run: python EMA10.py
